@@ -7,7 +7,7 @@
 
 module Graphics.Implicit.ObjectUtil.GetImplicit2 (getImplicit2) where
 
-import Prelude(cycle, (/=), uncurry, fst, Eq, zip, drop, abs, (-), (/), sqrt, (*), (+), length, fmap, (<=), (&&), (>=), (||), odd, ($), (>), filter, (<), minimum, (.), sin, cos)
+import Prelude(cycle, negate, (/=), uncurry, fst, Eq, zip, drop, abs, (-), (/), sqrt, (*), (+), length, fmap, (<=), (&&), (>=), (||), odd, ($), (>), filter, (<), minimum, (.), sin, cos)
 
 import Graphics.Implicit.Definitions
     ( objectRounding, ObjectContext, SymbolicObj2(Square, Circle, Polygon, Rotate2, Slice, Transform2, Shared2), SharedObj (Empty), Obj2, ℝ2, ℝ )
@@ -54,11 +54,12 @@ getImplicit2 _ (Polygon (scanUniqueCircular -> points@(_:_:_:_))) =
         -- FIXME: use partition instead?
         seemsInRight = odd . length . filter (>0) $ nub crossing_points
         seemsInLeft = odd . length . filter (<0) $ nub crossing_points
-        isIn = seemsInRight && seemsInLeft
         dists :: [ℝ]
         dists = fmap (distFromLineSeg p) pairs
     in
-        minimum dists * if isIn then -1 else 1
+        if seemsInRight && seemsInLeft
+        then negate $ minimum dists
+        else          minimum dists
 getImplicit2 ctx (Polygon _) = getImplicitShared @SymbolicObj2 ctx Empty
 -- Simple transforms
 getImplicit2 ctx (Rotate2 θ symbObj) =
