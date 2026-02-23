@@ -12,7 +12,9 @@ import Control.Lens ((^.))
 
 import qualified Data.Either as Either (either)
 
-import Data.List(genericIndex, length)
+import Data.List(filter, genericIndex, length)
+
+import Data.Ord (clamp)
 
 import Linear (V2(V2), V3(V3), _xy, _z, distance, dot)
 import qualified Linear (conjugate, inv44, normalizePoint, normalize, point, rotate, Metric)
@@ -229,7 +231,7 @@ getImplicit3 ctx (Shared3 obj) = getImplicitShared ctx obj
 
 -- | Check to see if a point is inside or outside of a mesh.
 insideMesh :: [(V3 ℝ, V3 ℝ, V3 ℝ)] -> V3 ℝ -> Bool
-insideMesh triangles point = odd $ length $ foundIntersection point unsafeSafeRay <$> triangles
+insideMesh triangles point = odd . length . filter (==True) $ foundIntersection point unsafeSafeRay <$> triangles
   where
     -- our assumed safe ray. it's not really safe, but.. gotta start somewhere.
     unsafeSafeRay :: V3 ℝ
@@ -237,13 +239,16 @@ insideMesh triangles point = odd $ length $ foundIntersection point unsafeSafeRa
     foundIntersection :: V3 ℝ -> V3 ℝ -> (V3 ℝ, V3 ℝ, V3 ℝ) -> Bool
     foundIntersection source direction (v1, v2, v3)
       -- shouldn't happen, triangle is on the same plane as unsafeSafeRay
-      | abs determinate <= 0 = False
+      | abs determinate <= eps = False
       -- the intersection is not on the triangle (distance along vec12 out of range)
-      | u <= 0 || u > 1      = False
-      | v <= 0 || v > 1      = False
-      | u + v > 1            = False
-      | otherwise            = True
+      | u <= eps || u > 1+eps  = False
+      | v <= eps || v > 1+eps  = False
+      | u + v > 1+eps          = False
+      | otherwise              = t > 0
       where
+        -- fudge factor.
+        eps :: ℝ
+        eps = 1e-12
         -- Our edge vectors. We have picked v1 to address the space by, for convenience.
         vec12 = v2 - v1
         vec13 = v3 - v1
@@ -259,6 +264,8 @@ insideMesh triangles point = odd $ length $ foundIntersection point unsafeSafeRa
         norm121s = vec1s `cross` vec12
         -- The distance along vec13 to find the intersertion of a ray from source in direction direction, and the plane our triangle is on.
         v = (direction `dot` norm121s) / determinate
+        -- The distance along the ray to find the intersertion of a ray from source in direction direction, and the plane our triangle is on.
+        t = (vec13 `dot` norm121s) / determinate
 
 -- With inspiration from: https://github.com/RenderKit/embree/blob/master/tutorials/common/math/closest_point.h
 -- FIXME: Sensitive to really skinny triangles; detect these, and select a different 'v1'?.
@@ -289,16 +296,19 @@ distancePointToTriangle point (virtex1, virtex2, virtex3) = distance point close
     closestPointToTriangle :: (V3 ℝ,V3 ℝ,V3 ℝ) -> V3 ℝ -> V3 ℝ
     closestPointToTriangle (v1, v2, v3) p
       -- Closest to the virtices
-      | d1 <= 0 && d2 <=  0 = v1
-      | d3 <= 0 && d4 <= d3 = v2
-      | d5 <= 0 && d6 <= d5 = v3
+      | d1 <=  eps && d2 <= eps = v1
+      | d3 >= -eps && d4 <=  d3 = v2
+      | d5 >= -eps && d6 <=  d5 = v3
       -- Closest to the edges
-      | va <= 0 && d1 >=  0 && d3 <= 0 = v1 + (d1 / (d1 - d3)) *^ vec12
-      | vb <= 0 && d2 >=  0 && d6 <= 0 = v1 + (d2 / (d2 - d6)) *^ vec13
-      | vc <= 0 && dx >=  0 && dy >= 0 = v2 + (dx / (dx + dy)) *^ vec23
+      | vc <= eps && d1 >= -eps && d3 <=  eps = v1 + (d1 / (d1 - d3)) *^ vec12
+      | vb <= eps && d2 >= -eps && d6 <=  eps = v1 + (d2 / (d2 - d6)) *^ vec13
+      | va <= eps && dx >= -eps && dy >= -eps = v2 + (dx / (dx + dy)) *^ vec23
       -- On the triangle's surface
-      | otherwise = (va / denom *^ v1) + (vb / denom *^ v2) + (vc / denom *^ v3)
+      | otherwise = v1 + v *^ vec12 + w *^ vec13
       where
+        -- fudge factor.
+        eps :: ℝ
+        eps = 1e-12
         -- The distance along edge12 and edge23, for segment V1 -> P when translated onto the triangle's plane.
         -- (P when translaned? Read: a line is drawn down to the plane the triangle is on, from p, to a point that is at a right angle with said line.)
         d1 = vec12 `dot` vec1p
@@ -329,3 +339,6 @@ distancePointToTriangle point (virtex1, virtex2, virtex3) = distance point close
         dy = d5 - d6
         -- The denominator.
         denom = va + vb + vc
+        -- barycentric results, where we actually intersect.
+        v = clamp (0,1) $ vb / denom
+        w = clamp (0,1) $ vc / denom
