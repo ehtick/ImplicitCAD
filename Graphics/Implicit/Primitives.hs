@@ -36,6 +36,7 @@ module Graphics.Implicit.Primitives (
                                      ellipsoid,
                                      square, rect,
                                      polygon,
+                                     polyhedron,
                                      rotateExtrude,
                                      rotate3,
                                      rotateQ,
@@ -58,7 +59,7 @@ module Graphics.Implicit.Primitives (
 import Prelude(Applicative, Eq, Foldable, Num, abs, (<), otherwise, Num, (-), (*), (/), (.), negate, Bool(True, False), Maybe(Just, Nothing), Either, fmap, ($), (<=), (&&), max, Ord)
 
 import Graphics.Implicit.Canon (canonicalize2, canonicalize3)
-import Graphics.Implicit.Definitions (ObjectContext, ℝ, ℝ2, ℝ3, Box2,
+import Graphics.Implicit.Definitions (ObjectContext, ℝ, ℝ2, ℝ3, ℕ, Box2,
                                       SharedObj(Empty,
                                                 Full,
                                                 Translate,
@@ -87,6 +88,7 @@ import Graphics.Implicit.Definitions (ObjectContext, ℝ, ℝ2, ℝ3, Box2,
                                                    Cube,
                                                    Sphere,
                                                    Cylinder,
+                                                   Polyhedron,
                                                    Torus,
                                                    BoxFrame,
                                                    Rotate3,
@@ -131,9 +133,16 @@ cube
 cube False size = Cube size
 cube True  size = translate (fmap (negate . (/ 2)) size) $ Cube size
 
+-- | A polyhedron
+polyhedron
+    :: [ℝ3]           -- ^ Points
+    -> [(ℕ,ℕ,ℕ)]      -- ^ triangles, resolved through indexing Points
+    -> SymbolicObj3   -- ^ Resulting polyhedron
+polyhedron points tris = Polyhedron points tris
+
 -- | A conical frustum --- ie. a cylinder with different radii at either end.
-cylinder2 ::
-    ℝ                   -- ^ Radius of the cylinder
+cylinder2
+    :: ℝ                -- ^ Radius of the cylinder
     -> ℝ                -- ^ Second radius of the cylinder
     -> ℝ                -- ^ Height of the cylinder
     -> SymbolicObj3     -- ^ Resulting cylinder

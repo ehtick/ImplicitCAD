@@ -13,6 +13,7 @@ module Graphics.Implicit.Export.TextBuilderUtils (
      toLazyText,
      -- some special case Builders.
      bf,
+     bℕ,
      buildTruncFloat,
      buildℕ,
      buildInt
@@ -36,6 +37,10 @@ toLazyText = toLazyTextWith defaultChunkSize
 -- | Serialize a value as a single precision float with an exponent attached.
 bf :: ℝ -> Text
 bf value = toLazyText . formatRealFloat Exponent Nothing $ fromℝtoFloat value
+
+-- | Serialize a value as an Integer.
+bℕ :: ℕ -> Text
+bℕ = toLazyText . decimal
 
 -- | Serialize a float with four decimal places
 buildTruncFloat :: ℝ -> Builder

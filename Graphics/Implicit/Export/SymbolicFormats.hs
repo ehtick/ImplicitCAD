@@ -11,8 +11,9 @@ module Graphics.Implicit.Export.SymbolicFormats (scad2, scad3) where
 
 import Prelude((.), fmap, Either(Left, Right), ($), (*), (-), (/), pi, error, (+), (==), take, floor, (&&), const, (<>), (<$>))
 
-import Graphics.Implicit.Definitions(ℝ, SymbolicObj2(Shared2, Square, Circle, Polygon, Rotate2, Transform2, Slice), SymbolicObj3(Shared3, Cube, Sphere, Cylinder, BoxFrame, Rotate3, Transform3, Extrude, ExtrudeM, RotateExtrude, ExtrudeOnEdgeOf, Torus, Ellipsoid, Link), isScaleID, SharedObj(Empty, Full, Complement, UnionR, IntersectR, DifferenceR, Translate, Scale, Mirror, Outset, Shell, EmbedBoxedObj, WithRounding), quaternionToEuler)
-import Graphics.Implicit.Export.TextBuilderUtils(Text, bf)
+import Graphics.Implicit.Definitions(ℝ, SymbolicObj2(Shared2, Square, Circle, Polygon, Rotate2, Transform2, Slice), SymbolicObj3(Shared3, Cube, Sphere, Cylinder, Polyhedron, BoxFrame, Rotate3, Transform3, Extrude, ExtrudeM, RotateExtrude, ExtrudeOnEdgeOf, Torus, Ellipsoid, Link), isScaleID, SharedObj(Empty, Full, Complement, UnionR, IntersectR, DifferenceR, Translate, Scale, Mirror, Outset, Shell, EmbedBoxedObj, WithRounding), quaternionToEuler)
+
+import Graphics.Implicit.Export.TextBuilderUtils(Text, bf, bℕ)
 
 -- For constructing vectors of ℝs.
 import Linear (V2(V2), V3(V3), V4(V4))
@@ -131,11 +132,16 @@ buildS3 _ (Cube (V3 w d h)) = call "cube" [pretty $ bf w, pretty $ bf d, pretty 
 
 buildS3 _ (Sphere r) = callNaked "sphere" ["r = " <> pretty (bf r)] []
 
-buildS3 _ (Cylinder h r1 r2) = callNaked "cylinder" [
-                              "r1 = " <> pretty (bf r1)
-                             ,"r2 = " <> pretty (bf r2)
-                             , pretty $ bf h
-                             ] []
+buildS3 _ (Cylinder h r1 r2) = callNaked "cylinder" ["r1 = " <> pretty (bf r1)
+                                                    ,"r2 = " <> pretty (bf r2)
+                                                    , pretty $ bf h
+                                                    ] []
+
+buildS3 _ (Polyhedron points tris) = callNaked "polyhedron" ["points = [" <> (fold $ intersperse "," $ renderPoint <$> points) <> "] faces = [" <> (fold $ intersperse "," $ renderTri <$> tris) <> "]" ] []
+  where
+    renderPoint (V3 v1 v2 v3) = "[" <> pretty (bf v1) <> "," <> pretty (bf v2) <> "," <> pretty (bf v3) <> "]"
+    renderTri (n1,n2,n3) = "[" <> pretty (bℕ n1) <> "," <> pretty (bℕ n2) <> "," <> pretty (bℕ n3) <> "]"
+
 buildS3 res (Rotate3 q obj) =
   let (V3 x y z) = quaternionToEuler q
    in call "rotate" [pretty $ bf (rad2deg x), pretty $ bf (rad2deg y), pretty $ bf (rad2deg z)] [buildS3 res obj]
@@ -180,7 +186,7 @@ buildS2 res (Shared2 obj) = buildShared res obj
 
 buildS2 _ (Circle r) = call "circle" [pretty $ bf r] []
 
-buildS2 _ (Polygon points) = call "polygon" (fmap bvect points) []
+buildS2 _ (Polygon points) = call "polygon" (bvect <$> points) []
 
 buildS2 res (Rotate2 r obj)     = call "rotate" [pretty $ bf (rad2deg r)] [buildS2 res obj]
 

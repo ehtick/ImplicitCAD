@@ -56,6 +56,7 @@ module Graphics.Implicit.Definitions (
         Cube,
         Sphere,
         Cylinder,
+        Polyhedron,
         Rotate3,
         Transform3,
         Torus,
@@ -331,6 +332,7 @@ data SymbolicObj3 =
       Cube ℝ3 -- rounding, size.
     | Sphere ℝ -- radius
     | Cylinder ℝ ℝ ℝ --
+    | Polyhedron [ℝ3] [(ℕ,ℕ,ℕ)] -- virtexes, triangles-by-index
     -- Simple transforms
     | Rotate3 (Quaternion ℝ) SymbolicObj3
     | Transform3 (M44 ℝ) SymbolicObj3
@@ -364,6 +366,7 @@ instance Show SymbolicObj3 where
     -- centered.
     Cube sz -> showCon "cube" @| False @| sz
     Sphere d -> showCon "sphere" @| d
+    Polyhedron points tris -> showCon "polyhedron" @| points @| tris
     BoxFrame b e -> showCon "boxFrame" @| b @| e
     Link le r1 r2 -> showCon "link" @| le @| r1 @| r2
     -- NB: The arguments to 'Cylinder' are backwards compared to 'cylinder' and

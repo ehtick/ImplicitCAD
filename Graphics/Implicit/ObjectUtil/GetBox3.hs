@@ -5,13 +5,19 @@
 
 module Graphics.Implicit.ObjectUtil.GetBox3 (getBox3) where
 
-import Prelude(uncurry, pure, Bool(False), Either (Left, Right), (==), max, (/), (-), (+), fmap, unzip, ($), (<$>), (.), minimum, maximum, min, (>), (*), (<), abs, either, const, otherwise, take, fst, snd)
+import Prelude(foldl, uncurry, pure, Bool(False), Either (Left, Right), (==), max, (/), (-), (+), fmap, unzip, ($), (<$>), (.), minimum, maximum, min, (>), (*), (<), abs, either, const, otherwise, take, fst, snd)
+
+-- For Maybe types.
+import Data.Maybe (fromMaybe, Maybe(Just, Nothing))
+
+import Linear (V2(V2), V3(V3))
+import qualified Linear (rotate, point, normalizePoint, (!*))
 
 import Graphics.Implicit.Definitions
     ( Fastℕ,
       fromFastℕ,
       ExtrudeMScale(C2, C1),
-      SymbolicObj3(Shared3, Cube, Sphere, Cylinder, Rotate3, Transform3, Extrude, ExtrudeOnEdgeOf, ExtrudeM, RotateExtrude, Torus, Ellipsoid, BoxFrame, Link),
+      SymbolicObj3(Shared3, Cube, Sphere, Cylinder, Polyhedron, Rotate3, Transform3, Extrude, ExtrudeOnEdgeOf, ExtrudeM, RotateExtrude, Torus, Ellipsoid, BoxFrame, Link),
       Box3,
       ℝ,
       fromFastℕtoℝ,
@@ -20,9 +26,6 @@ import Graphics.Implicit.Definitions
 import Graphics.Implicit.ObjectUtil.GetBox2 (getBox2, getBox2R)
 
 import Graphics.Implicit.ObjectUtil.GetBoxShared (corners, pointsBox, getBoxShared)
-
-import Linear (V2(V2), V3(V3))
-import qualified Linear
 
 -- FIXME: many variables are being ignored here. no rounding for intersect, or difference.. etc.
 
@@ -33,6 +36,15 @@ getBox3 (Shared3 obj) = getBoxShared obj
 getBox3 (Cube size) = (pure 0, size)
 getBox3 (Sphere r) = (pure (-r), pure r)
 getBox3 (Cylinder h r1 r2) = (V3 (-r) (-r) 0, V3 r r h ) where r = max r1 r2
+getBox3 (Polyhedron points _) = (minimum_point, maximum_point)
+  where
+    (minimum_point, maximum_point) = fromMaybe (V3 0 0 0, V3 0 0 0) maybeVs
+    maybeVs :: (Maybe (V3 ℝ,V3 ℝ))
+    maybeVs = foldl findMinMax Nothing points
+      where
+        findMinMax :: (Maybe (V3 ℝ,V3 ℝ)) -> V3 ℝ -> (Maybe (V3 ℝ,V3 ℝ))
+        findMinMax Nothing newV3 = Just (newV3, newV3)
+        findMinMax (Just (V3 minx miny minz,V3 maxx maxy maxz)) (V3 newx newy newz) = Just (V3 (min minx newx) (min miny newy) (min minz newz), V3 (max maxx newx) (max maxy newy) (max maxz newz))
 getBox3 (Torus r1 r2) =
   let r = r1 + r2
   in (V3 (-r) (-r) (-r2), V3 r r r2)

@@ -15,7 +15,7 @@
 -- Export one set containing all of the primitive modules.
 module Graphics.Implicit.ExtOpenScad.Primitives (primitiveModules) where
 
-import Prelude((.), Either(Left, Right), Bool(True, False), Maybe(Just, Nothing), ($), pure, either, id, (-), (==), (&&), (<), (*), cos, sin, pi, (/), (>), const, uncurry, (/=), (||), not, null, fmap, (<>), otherwise, error, (<*>), (<$>))
+import Prelude((.), Either(Left, Right), Bool(True, False), Maybe(Just, Nothing), ($), pure, show, either, id, (-), (==), (&&), (<), (*), cos, sin, pi, (/), (>), const, uncurry, (/=), (||), not, null, fmap, (<>), otherwise, error, (<*>), (<$>))
 
 import Graphics.Implicit.Definitions (ℝ, ℝ2, ℝ3, ℕ, SymbolicObj2, SymbolicObj3, ExtrudeMScale(C1), fromℕtoℝ, isScaleID)
 
@@ -27,10 +27,12 @@ import qualified Graphics.Implicit.ExtOpenScad.Util.ArgParser as GIEUA (argument
 
 import Graphics.Implicit.ExtOpenScad.Util.OVal (OTypeMirror, caseOType, divideObjs, (<||>))
 
-import Graphics.Implicit.ExtOpenScad.Util.StateC (errorC)
+import Graphics.Implicit.ExtOpenScad.Util.StateC (errorC, warnC)
 
 -- Note the use of a qualified import, so we don't have the functions in this file conflict with what we're importing.
-import qualified Graphics.Implicit.Primitives as Prim (withRounding, sphere, rect3, rect, translate, circle, polygon, extrude, cylinder2, union, unionR, intersect, intersectR, difference, differenceR, rotate, slice, transform, rotate3V, rotate3, transform3, scale, extrudeM, rotateExtrude, shell, mirror, pack3, pack2, torus, ellipsoid, cone)
+import qualified Graphics.Implicit.Primitives as Prim (withRounding, sphere, rect3, rect, translate, circle, polygon, polyhedron, extrude, cylinder2, union, unionR, intersect, intersectR, difference, differenceR, rotate, slice, transform, rotate3V, rotate3, transform3, scale, extrudeM, rotateExtrude, shell, mirror, pack3, pack2, torus, ellipsoid, cone)
+
+import Data.List (concatMap)
 
 import Control.Monad (when, mplus)
 
@@ -60,6 +62,7 @@ primitiveModules =
   , onModIze torus [([("r1", noDefault), ("r2", hasDefault)], noSuite)]
   , onModIze ellipsoid [([("a", noDefault), ("b", hasDefault), ("c", hasDefault)], noSuite)]
   , onModIze polygon [([("points", noDefault)], noSuite)]
+  , onModIze polyhedron [([("points", noDefault), ("faces", noDefault)], noSuite)]
   , onModIze union [([("r", hasDefault)], requiredSuite)]
   , onModIze intersect [([("r", hasDefault)], requiredSuite)]
   , onModIze difference [([("r", hasDefault)], requiredSuite)]
@@ -265,6 +268,25 @@ cylinder = moduleWithoutSuite "cylinder" $ \_ _ -> do
         in shift obj3
         else shift $ Prim.cylinder2 r1 r2 dh
 
+polyhedron :: (Symbol, SourcePosition -> [OVal] -> ArgParser (StateC [OVal]))
+polyhedron = moduleWithoutSuite "polyhedron" $ \_ _ -> do
+    example "polyhedron(points=[[0,0,0], [2,0,0], [2,2,0], [0,2,0], [1, 1, 2]], faces=[[0,1,2,3], [0,5,1], [1,5,2], [2,5,3], [3,5,4], [4,5,0]]);"
+    -- arguments
+    points :: [ℝ3] <- argument "points" `defaultTo` [] `doc` "list of points to construct faces from"
+    faces :: [[ℕ]] <- argument "faces" `defaultTo` [] `doc` "list of sets of indices into points, used to create faces on the polyhedron."
+    -- A tri is constructed of three indexes into the points.
+    -- This decomposes our faces into tris.
+    let
+      tris = concatMap trianglesFromFace faces
+      in
+      addObj3 $ Prim.polyhedron points tris
+      where
+        -- FIXME: use warnC here, instead of error.
+        trianglesFromFace :: [ℕ] -> [(ℕ,ℕ,ℕ)]
+        trianglesFromFace [p1,p2,p3] = [(p1,p2,p3)]
+        trianglesFromFace (p1:p2:p3:xs) = ((p1,p2,p3):trianglesFromFace (p2:p3:xs))
+        trianglesFromFace ys = error $ "too few points:" <> (show ys) <> "\n"
+
 cone :: (Symbol, SourcePosition -> [OVal] -> ArgParser (StateC [OVal]))
 cone = moduleWithoutSuite "cone" $ \_ _ -> do
     example "cone(r=10, h=30, center=true);"
@@ -351,8 +373,7 @@ circle = moduleWithoutSuite "circle" $ \_ _ -> do
         else Prim.polygon
             [V2 (r*cos θ) (r*sin θ) | θ <- [2*pi*fromℕtoℝ n/fromℕtoℝ sides | n <- [0 .. sides - 1]]]
 
--- | FIXME: 3D Polygons?
---   FIXME: handle rectangles that are not grid alligned.
+-- | FIXME: handle rectangles that are not grid alligned.
 --   FIXME: allow for rounding of polygon corners, specification of vertex ordering.
 --   FIXME: polygons have to have more than two points, or do not generate geometry, and generate an error.
 polygon :: (Symbol, SourcePosition -> [OVal] -> ArgParser (StateC [OVal]))

@@ -83,6 +83,7 @@ import Graphics.Implicit.Definitions
   , SymbolicObj3
       ( Cube
       , Cylinder
+      , Polyhedron
       , Extrude
       , ExtrudeM
       , ExtrudeOnEdgeOf
@@ -176,6 +177,7 @@ fmapObj3
 fmapObj3 f _ _ (Cube v) = f $ Cube v
 fmapObj3 f _ _ (Sphere r) = f $ Sphere r
 fmapObj3 f _ _ (Cylinder r1 r2 h) = f $ Cylinder r1 r2 h
+fmapObj3 f _ _ (Polyhedron points faces) = f $ Polyhedron points faces
 fmapObj3 f _ _ (Torus r1 r2) = f $ Torus r1 r2
 fmapObj3 f _ _ (Ellipsoid a b c) = f $ Ellipsoid a b c
 fmapObj3 f _ _ (BoxFrame b e) = f $ BoxFrame b e
@@ -239,6 +241,7 @@ instance EqObj SymbolicObj3 where
   Ellipsoid a1 b1 c1 =^= Ellipsoid a2 b2 c2 = a1 == a2 && b1 == b2 && c1 == c2
   Cylinder r1a r2a ha =^= Cylinder r1b r2b hb = r1a == r1b && r2a == r2b && ha == hb
   BoxFrame b1 e1 =^= BoxFrame b2 e2 = b1 == b2 && e1 == e2
+  Polyhedron p1 f1 =^= Polyhedron p2 f2 = p1 == p2 && f1 == f2
   Link a1 b1 c1 =^= Link a2 b2 c2 = a1 == a2 && b1 == b2 && c1 == c2
   Rotate3 x a =^= Rotate3 y b = x == y && a =^= b
   Transform3 x a =^= Transform3 y b = x == y && a =^= b

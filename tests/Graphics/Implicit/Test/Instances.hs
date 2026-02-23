@@ -20,7 +20,7 @@
 
 module Graphics.Implicit.Test.Instances (Observe, observe, (=~=), arbitraryNonZeroV) where
 
-import Prelude (Applicative, (.), not, abs, fmap, Bool(False, True), Bounded, Double, Integer, fromIntegral, (*), (/), (^), round, Enum, Show(show), unlines, Ord, compare, Eq, (==), pure, RealFloat(isNaN), Int, Double, ($), (<), div, (<*>), (<$>), (+), (<>), (<=))
+import Prelude (Applicative, (.), not, return, abs, fmap, Bool(False, True), Bounded, Double, Integer, fromIntegral, (*), (/), (^), round, Enum, Show(show), unlines, Ord, compare, Eq, (==), pure, RealFloat(isNaN), Int, Double, ($), (<), div, (<*>), (<$>), (+), (<>), (<=))
 #if MIN_VERSION_base(4,17,0)
 import Prelude (type(~))
 #endif
@@ -50,6 +50,7 @@ import Graphics.Implicit.Definitions
       ℝ,
       ℝ2,
       ℝ3,
+      ℕ,
       SharedObj(Outset, Translate, Scale, UnionR, IntersectR,
                 DifferenceR, Shell, WithRounding) )
 
@@ -214,6 +215,12 @@ instance Arbitrary (Quaternion ℝ) where
     if v == 0.0
       then discard
       else pure $ axisAngle v q
+
+instance Arbitrary ℕ where
+--  shrink = genericShrink
+  arbitrary = do
+    n <- getPositive <$> arbitrary
+    return n
 
 ------------------------------------------------------------------------------
 -- Minimum of quickspec(s) Observe class and instances required for implicit testsuite
