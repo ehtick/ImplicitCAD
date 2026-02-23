@@ -297,7 +297,7 @@ distancePointToTriangle point (virtex1, virtex2, virtex3) = distance point close
       | vb <= 0 && d2 >=  0 && d6 <= 0 = v1 + (d2 / (d2 - d6)) *^ vec13
       | vc <= 0 && dx >=  0 && dy >= 0 = v2 + (dx / (dx + dy)) *^ vec23
       -- On the triangle's surface
-      | otherwise = v1 + (vb * denom *^ vec12) + (vc * denom *^ vec13)
+      | otherwise = (va / denom *^ v1) + (vb / denom *^ v2) + (vc / denom *^ v3)
       where
         -- The distance along edge12 and edge23, for segment V1 -> P when translated onto the triangle's plane.
         -- (P when translaned? Read: a line is drawn down to the plane the triangle is on, from p, to a point that is at a right angle with said line.)
@@ -328,4 +328,4 @@ distancePointToTriangle point (virtex1, virtex2, virtex3) = distance point close
         dx = d4 - d3
         dy = d5 - d6
         -- The denominator.
-        denom = 1 / (va + vb + vc)
+        denom = va + vb + vc
