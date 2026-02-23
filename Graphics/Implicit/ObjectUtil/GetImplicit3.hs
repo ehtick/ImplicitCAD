@@ -78,8 +78,8 @@ getImplicit3 _ (Polyhedron [] _) = error "Asked to find distance to an empty pol
 getImplicit3 _ (Polyhedron _ []) = error "Asked to find distance to an empty polygon. No tris."
 getImplicit3 _ (Polyhedron points tris) = \(point) ->
   if insideMesh triangles point
-  then          minimum $ distancePointToTriangle point <$> triangles
-  else negate $ minimum $ distancePointToTriangle point <$> triangles
+  then negate $ minimum $ distancePointToTriangle point <$> triangles
+  else          minimum $ distancePointToTriangle point <$> triangles
   where
     -- decompose our tris into triangles.
     triangles = findTriangle points <$> tris
@@ -241,6 +241,7 @@ insideMesh triangles point = odd $ length $ foundIntersection point unsafeSafeRa
       -- the intersection is not on the triangle (distance along vec12 out of range)
       | u <= 0 || u > 1      = False
       | v <= 0 || v > 1      = False
+      | u + v > 1            = False
       | otherwise            = True
       where
         -- Our edge vectors. We have picked v1 to address the space by, for convenience.
@@ -327,4 +328,4 @@ distancePointToTriangle point (virtex1, virtex2, virtex3) = distance point close
         dx = d4 - d3
         dy = d5 - d6
         -- The denominator.
-        denom = 1 / va + vb + vc
+        denom = 1 / (va + vb + vc)

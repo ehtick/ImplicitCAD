@@ -284,7 +284,7 @@ polyhedron = moduleWithoutSuite "polyhedron" $ \_ _ -> do
         -- FIXME: use warnC here, instead of error.
         trianglesFromFace :: [ℕ] -> [(ℕ,ℕ,ℕ)]
         trianglesFromFace [p1,p2,p3] = [(p1,p2,p3)]
-        trianglesFromFace (p1:p2:p3:xs) = ((p1,p2,p3):trianglesFromFace (p2:p3:xs))
+        trianglesFromFace (p1:p2:p3:xs) = ((p1,p2,p3):trianglesFromFace (p1:p3:xs))
         trianglesFromFace ys = error $ "too few points:" <> (show ys) <> "\n"
 
 cone :: (Symbol, SourcePosition -> [OVal] -> ArgParser (StateC [OVal]))
