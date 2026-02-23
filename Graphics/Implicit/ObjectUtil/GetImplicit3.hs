@@ -273,14 +273,14 @@ distancePointToTriangle :: V3 ℝ -> (V3 ℝ,V3 ℝ,V3 ℝ) -> ℝ
 distancePointToTriangle point (virtex1, virtex2, virtex3) = distance point closestPointToTriangleCenteredSorted
   where
     -- FIXME: Here are two precision error mitigation wrappers. Find out if they're needed.
-    -- Reorder triangles such that we use the corner across from the longest side to address the space.
+    -- Reorder triangles such that we use one of the corners of the longest side to address the space in barycentric coordinates. Yes, this is wrong, but it's much more numerically stable?
     closestPointToTriangleCenteredSorted :: V3 ℝ
     closestPointToTriangleCenteredSorted = closestPointToTriangleCentered adjustedTriangle
       where
         adjustedTriangle
-          | abLength >= bcLength && abLength >= caLength = (virtex3, virtex1, virtex2)
-          | abLength >= caLength                         = (virtex1, virtex2, virtex3)
-          | otherwise                                    = (virtex2, virtex3, virtex1)
+          | abLength >= bcLength && abLength >= caLength = (virtex2, virtex3, virtex1)
+          | abLength >= caLength                         = (virtex3, virtex1, virtex2)
+          | otherwise                                    = (virtex1, virtex2, virtex3)
           where
             -- Really, using length-squared. don't have to abs it, don't have to sqrt it.
             abLength = (virtex2-virtex1) `dot` (virtex2-virtex1)
