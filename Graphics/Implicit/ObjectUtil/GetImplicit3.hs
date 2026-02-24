@@ -14,8 +14,6 @@ import qualified Data.Either as Either (either)
 
 import Data.List(filter, genericIndex, length)
 
-import Data.Ord (clamp)
-
 import Linear (V2(V2), V3(V3), _xy, _z, distance, dot)
 import qualified Linear (conjugate, inv44, normalizePoint, normalize, point, rotate, Metric)
 
@@ -230,6 +228,7 @@ getImplicit3 ctx (RotateExtrude totalRotation translate rotate symbObj) =
 getImplicit3 ctx (Shared3 obj) = getImplicitShared ctx obj
 
 -- | Check to see if a point is inside or outside of a mesh.
+-- FIXME: Replace this with a winding number based approach. See: https://github.com/marmakoide/inside-3d-mesh/blob/master/README.md
 insideMesh :: [(V3 ℝ, V3 ℝ, V3 ℝ)] -> V3 ℝ -> Bool
 insideMesh triangles point = odd . length . filter (==True) $ foundIntersection point unsafeSafeRay <$> triangles
   where
@@ -239,16 +238,17 @@ insideMesh triangles point = odd . length . filter (==True) $ foundIntersection 
     foundIntersection :: V3 ℝ -> V3 ℝ -> (V3 ℝ, V3 ℝ, V3 ℝ) -> Bool
     foundIntersection source direction (v1, v2, v3)
       -- shouldn't happen, triangle is on the same plane as unsafeSafeRay
-      | abs determinate <= eps = False
+      | abs determinate < eps = False
       -- the intersection is not on the triangle (distance along vec12 out of range)
-      | u <= eps || u > 1+eps  = False
-      | v <= eps || v > 1+eps  = False
-      | u + v > 1+eps          = False
-      | otherwise              = t > 0
+      | u < eps || u > 1-eps  = False
+      | v < eps || v > 1-eps  = False
+      | u + v > 1-eps-eps     = False
+      | otherwise             = t > 0
       where
         -- fudge factor.
+        -- adjusted from: 6,7,9,12,15,17,18==(43,171), 16 ==(38,171)
         eps :: ℝ
-        eps = 1e-12
+        eps = 1e-16
         -- Our edge vectors. We have picked v1 to address the space by, for convenience.
         vec12 = v2 - v1
         vec13 = v3 - v1
@@ -262,25 +262,23 @@ insideMesh triangles point = odd . length . filter (==True) $ foundIntersection 
         u = (vec1s `dot` norm13d) / determinate
         -- The normal of the plane fromed by vec12 and vec1s.
         norm121s = vec1s `cross` vec12
-        -- The distance along vec13 to find the intersertion of a ray from source in direction direction, and the plane our triangle is on.
+        -- The distance along vec13 to find the intersection of a ray from source in direction direction, and the plane our triangle is on.
         v = (direction `dot` norm121s) / determinate
-        -- The distance along the ray to find the intersertion of a ray from source in direction direction, and the plane our triangle is on.
+        -- The distance along the ray to find the intersection of a ray from source in direction direction, and the plane our triangle is on.
         t = (vec13 `dot` norm121s) / determinate
 
 -- With inspiration from: https://github.com/RenderKit/embree/blob/master/tutorials/common/math/closest_point.h
--- FIXME: Sensitive to really skinny triangles; detect these, and select a different 'v1'?.
 distancePointToTriangle :: V3 ℝ -> (V3 ℝ,V3 ℝ,V3 ℝ) -> ℝ
 distancePointToTriangle point (virtex1, virtex2, virtex3) = distance point closestPointToTriangleCenteredSorted
   where
-    -- FIXME: Here are two precision error mitigation wrappers. Find out if they're needed.
-    -- Reorder triangles such that we use one of the corners of the longest side to address the space in barycentric coordinates. Yes, this is wrong, but it's much more numerically stable?
+    -- Reorder triangles such that we use the corner away from the longest side to address the space in barycentric coordinates.
     closestPointToTriangleCenteredSorted :: V3 ℝ
     closestPointToTriangleCenteredSorted = closestPointToTriangleCentered adjustedTriangle
       where
         adjustedTriangle
-          | abLength >= bcLength && abLength >= caLength = (virtex2, virtex3, virtex1)
-          | abLength >= caLength                         = (virtex3, virtex1, virtex2)
-          | otherwise                                    = (virtex1, virtex2, virtex3)
+          | abLength >= bcLength && abLength >= caLength = (virtex3, virtex1, virtex2)
+          | abLength >= caLength                         = (virtex1, virtex2, virtex3)
+          | otherwise                                    = (virtex2, virtex3, virtex1)
           where
             -- Really, using length-squared. don't have to abs it, don't have to sqrt it.
             abLength = (virtex2-virtex1) `dot` (virtex2-virtex1)
@@ -297,18 +295,19 @@ distancePointToTriangle point (virtex1, virtex2, virtex3) = distance point close
     closestPointToTriangle (v1, v2, v3) p
       -- Closest to the virtices
       | d1 <=  eps && d2 <= eps = v1
-      | d3 >= -eps && d4 <=  d3 = v2
-      | d5 >= -eps && d6 <=  d5 = v3
+      | d3  > -eps && d4 <=  d3 = v2
+      | d6  > -eps && d5 <=  d6 = v3
       -- Closest to the edges
-      | vc <= eps && d1 >= -eps && d3 <=  eps = v1 + (d1 / (d1 - d3)) *^ vec12
-      | vb <= eps && d2 >= -eps && d6 <=  eps = v1 + (d2 / (d2 - d6)) *^ vec13
-      | va <= eps && dx >= -eps && dy >= -eps = v2 + (dx / (dx + dy)) *^ vec23
+      | vc <= eps && d1 > -eps && d3 <=  eps = v1 + (d1 / (d1 - d3)) *^ vec12
+      | vb <= eps && d2 > -eps && d6 <=  eps = v1 + (d2 / (d2 - d6)) *^ vec13
+      | va <= eps && dx > -eps && dy  > -eps = v2 + (dx / (dx + dy)) *^ vec23
       -- On the triangle's surface
       | otherwise = v1 + v *^ vec12 + w *^ vec13
       where
-        -- fudge factor.
+        -- fudge factor. chosen by tuning with our unit pyramid.
+        -- 3,11 = 52 , 12 == 50, 13,14,15,18 == 45
         eps :: ℝ
-        eps = 1e-12
+        eps = 1e-13
         -- The distance along edge12 and edge23, for segment V1 -> P when translated onto the triangle's plane.
         -- (P when translaned? Read: a line is drawn down to the plane the triangle is on, from p, to a point that is at a right angle with said line.)
         d1 = vec12 `dot` vec1p
@@ -340,5 +339,5 @@ distancePointToTriangle point (virtex1, virtex2, virtex3) = distance point close
         -- The denominator.
         denom = va + vb + vc
         -- barycentric results, where we actually intersect.
-        v = clamp (0,1) $ vb / denom
-        w = clamp (0,1) $ vc / denom
+        v = vb / denom
+        w = vc / denom
