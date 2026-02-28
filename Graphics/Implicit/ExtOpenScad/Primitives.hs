@@ -27,7 +27,7 @@ import qualified Graphics.Implicit.ExtOpenScad.Util.ArgParser as GIEUA (argument
 
 import Graphics.Implicit.ExtOpenScad.Util.OVal (OTypeMirror, caseOType, divideObjs, (<||>))
 
-import Graphics.Implicit.ExtOpenScad.Util.StateC (errorC, warnC)
+import Graphics.Implicit.ExtOpenScad.Util.StateC (errorC)
 
 -- Note the use of a qualified import, so we don't have the functions in this file conflict with what we're importing.
 import qualified Graphics.Implicit.Primitives as Prim (withRounding, sphere, rect3, rect, translate, circle, polygon, polyhedron, extrude, cylinder2, union, unionR, intersect, intersectR, difference, differenceR, rotate, slice, transform, rotate3V, rotate3, transform3, scale, extrudeM, rotateExtrude, shell, mirror, pack3, pack2, torus, ellipsoid, cone)
