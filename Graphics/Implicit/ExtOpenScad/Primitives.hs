@@ -15,11 +15,11 @@
 -- Export one set containing all of the primitive modules.
 module Graphics.Implicit.ExtOpenScad.Primitives (primitiveModules) where
 
-import Prelude((.), Either(Left, Right), Bool(True, False), Maybe(Just, Nothing), ($), pure, show, either, id, (-), (==), (&&), (<), (*), cos, sin, pi, (/), (>), const, uncurry, (/=), (||), not, null, fmap, (<>), otherwise, error, (<*>), (<$>))
+import Prelude(concat, mapM, (.), Either(Left, Right), Bool(True, False), Maybe(Just, Nothing), ($), pure, show, either, id, (-), (==), (&&), (<), (*), cos, sin, pi, (/), (>), const, uncurry, (/=), (||), not, null, fmap, (<>), otherwise, error, (<*>), (<$>))
 
 import Graphics.Implicit.Definitions (ℝ, ℝ2, ℝ3, ℕ, SymbolicObj2, SymbolicObj3, ExtrudeMScale(C1), fromℕtoℝ, isScaleID)
 
-import Graphics.Implicit.ExtOpenScad.Definitions (OVal (OObj2, OObj3, ONModule), ArgParser(APFail), Symbol(Symbol), StateC, SourcePosition)
+import Graphics.Implicit.ExtOpenScad.Definitions (OVal (OObj2, OObj3, ONModule, ONModuleWithSuite), ArgParser, Symbol(Symbol), StateC, SourcePosition)
 
 import Graphics.Implicit.ExtOpenScad.Util.ArgParser (doc, defaultTo, example, test, eulerCharacteristic)
 
@@ -27,16 +27,15 @@ import qualified Graphics.Implicit.ExtOpenScad.Util.ArgParser as GIEUA (argument
 
 import Graphics.Implicit.ExtOpenScad.Util.OVal (OTypeMirror, caseOType, divideObjs, (<||>))
 
-import Graphics.Implicit.ExtOpenScad.Util.StateC (errorC)
+import Graphics.Implicit.ExtOpenScad.Util.StateC (errorC, warnC)
 
 -- Note the use of a qualified import, so we don't have the functions in this file conflict with what we're importing.
 import qualified Graphics.Implicit.Primitives as Prim (withRounding, sphere, rect3, rect, translate, circle, polygon, polyhedron, extrude, cylinder2, union, unionR, intersect, intersectR, difference, differenceR, rotate, slice, transform, rotate3V, rotate3, transform3, scale, extrudeM, rotateExtrude, shell, mirror, pack3, pack2, torus, ellipsoid, cone)
 
-import Data.List (concatMap)
-
-import Control.Monad (when, mplus)
+import Control.Monad (mplus)
 
 import Data.Text.Lazy (Text)
+import qualified Data.Text.Lazy as DTL (pack)
 
 import Control.Lens ((^.))
 import Linear (_m33, M34, M44, V2(V2), V3(V3), V4(V4))
@@ -52,44 +51,52 @@ argument a = GIEUA.argument (Symbol a)
 primitiveModules :: [(Symbol, OVal)]
 primitiveModules =
   [
-    onModIze sphere [([("r", noDefault)], noSuite), ([("d", noDefault)], noSuite)]
-  , onModIze cube [([("x", noDefault), ("y", noDefault), ("z", noDefault), ("center", hasDefault), ("r", hasDefault)], noSuite),([("size", noDefault), ("center", hasDefault), ("r", hasDefault)], noSuite)]
-  , onModIze square [([("x", noDefault), ("y", noDefault), ("center", hasDefault), ("r", hasDefault)], noSuite), ([("size", noDefault), ("center", hasDefault), ("r", hasDefault)], noSuite)]
-  , onModIze cylinder [([("r", hasDefault), ("h", hasDefault), ("r1", hasDefault), ("r2", hasDefault), ("$fn", hasDefault), ("center", hasDefault)], noSuite),
-                       ([("d", hasDefault), ("h", hasDefault), ("d1", hasDefault), ("d2", hasDefault), ("$fn", hasDefault), ("center", hasDefault)], noSuite)]
-  , onModIze circle [([("r", noDefault), ("$fn", hasDefault)], noSuite), ([("d", noDefault), ("$fn", hasDefault)], noSuite)]
-  , onModIze cone [([("r", noDefault), ("h", hasDefault), ("center", hasDefault)], noSuite), ([("d", noDefault), ("h", hasDefault), ("center", hasDefault)], noSuite)]
-  , onModIze torus [([("r1", noDefault), ("r2", hasDefault)], noSuite)]
-  , onModIze ellipsoid [([("a", noDefault), ("b", hasDefault), ("c", hasDefault)], noSuite)]
-  , onModIze polygon [([("points", noDefault)], noSuite)]
-  , onModIze polyhedron [([("points", noDefault), ("faces", noDefault)], noSuite)]
-  , onModIze union [([("r", hasDefault)], requiredSuite)]
-  , onModIze intersect [([("r", hasDefault)], requiredSuite)]
-  , onModIze difference [([("r", hasDefault)], requiredSuite)]
-  , onModIze translate [([("x", noDefault), ("y", noDefault), ("z", noDefault)], requiredSuite), ([("v", noDefault)], requiredSuite)]
-  , onModIze rotate [([("a", noDefault), ("v", hasDefault)], requiredSuite)]
-  , onModIze scale [([("v", noDefault)], requiredSuite)]
-  , onModIze extrude [([("height", hasDefault), ("center", hasDefault), ("twist", hasDefault), ("scale", hasDefault), ("translate", hasDefault), ("r", hasDefault)], requiredSuite)]
-  , onModIze rotateExtrude [([("angle", hasDefault), ("r", hasDefault), ("translate", hasDefault), ("rotate", hasDefault)], requiredSuite)]
-  , onModIze shell [([("w", noDefault)], requiredSuite)]
-  , onModIze projection [([("cut", hasDefault)], requiredSuite)]
-  , onModIze pack [([("size", noDefault), ("sep", noDefault)], requiredSuite)]
-  , onModIze unit [([("unit", noDefault)], requiredSuite)]
-  , onModIze mirror [([("x", noDefault), ("y", noDefault), ("z", noDefault)], requiredSuite), ([("v", noDefault)], requiredSuite)]
-  , onModIze multmatrix [([("m", noDefault)], requiredSuite)]
+    consModule sphere [[("r", noDefault)], [("d", noDefault)]]
+  , consModule cube [[("x", noDefault), ("y", noDefault), ("z", noDefault), ("center", hasDefault), ("r", hasDefault)],[("size", noDefault), ("center", hasDefault), ("r", hasDefault)]]
+  , consModule square [[("x", noDefault), ("y", noDefault), ("center", hasDefault), ("r", hasDefault)], [("size", noDefault), ("center", hasDefault), ("r", hasDefault)]]
+  , consModule cylinder [[("r", hasDefault), ("h", hasDefault), ("r1", hasDefault), ("r2", hasDefault), ("$fn", hasDefault), ("center", hasDefault)],
+                                   [("d", hasDefault), ("h", hasDefault), ("d1", hasDefault), ("d2", hasDefault), ("$fn", hasDefault), ("center", hasDefault)]]
+  , consModule circle [[("r", noDefault), ("$fn", hasDefault)], [("d", noDefault), ("$fn", hasDefault)]]
+  , consModule cone [[("r", noDefault), ("h", hasDefault), ("center", hasDefault)], [("d", noDefault), ("h", hasDefault), ("center", hasDefault)]]
+  , consModule torus [[("r1", noDefault), ("r2", hasDefault)]]
+  , consModule ellipsoid [[("a", noDefault), ("b", hasDefault), ("c", hasDefault)]]
+  , consModule polygon [[("points", noDefault)]]
+  , consModule polyhedron [[("points", noDefault), ("faces", noDefault)]]
+  , consModuleWithSuite union [[("r", hasDefault)]]
+  , consModuleWithSuite intersect [[("r", hasDefault)]]
+  , consModuleWithSuite difference [[("r", hasDefault)]]
+  , consModuleWithSuite translate [[("x", noDefault), ("y", noDefault), ("z", noDefault)], [("v", noDefault)]]
+  , consModuleWithSuite rotate [[("a", noDefault), ("v", hasDefault)]]
+  , consModuleWithSuite scale [[("v", noDefault)]]
+  , consModuleWithSuite extrude [[("height", hasDefault), ("center", hasDefault), ("twist", hasDefault), ("scale", hasDefault), ("translate", hasDefault), ("r", hasDefault)]]
+  , consModuleWithSuite rotateExtrude [[("angle", hasDefault), ("r", hasDefault), ("translate", hasDefault), ("rotate", hasDefault)]]
+  , consModuleWithSuite shell [[("w", noDefault)]]
+  , consModuleWithSuite projection [[("cut", hasDefault)]]
+  , consModuleWithSuite pack [[("size", noDefault), ("sep", noDefault)]]
+  , consModuleWithSuite unit [[("unit", noDefault)]]
+  , consModuleWithSuite mirror [[("x", noDefault), ("y", noDefault), ("z", noDefault)], [("v", noDefault)]]
+  , consModuleWithSuite multmatrix [[("m", noDefault)]]
   ]
   where
     hasDefault = True
     noDefault = False
-    noSuite :: Maybe Bool
-    noSuite = Nothing
-    requiredSuite = Just True
-    onModIze func rawInstances = (name, ONModule name implementation instances)
+    consModuleWithSuite :: (Symbol, SourcePosition -> [OVal] -> ArgParser (StateC [OVal])) -> [[(Text, Bool)]] -> (Symbol, OVal)
+    consModuleWithSuite func rawInstances = (name, ONModuleWithSuite name implementation instances)
       where
         (name, implementation) = func
         instances = fmap fixup rawInstances
-        fixup :: ([(Text, Bool)], Maybe Bool) -> ([(Symbol, Bool)], Maybe Bool)
-        fixup (args, suiteInfo) = (fmap fixupArgs args, suiteInfo)
+        fixup :: [(Text, Bool)] -> [(Symbol, Bool)]
+        fixup args = fmap fixupArgs args
+          where
+            fixupArgs :: (Text, Bool) -> (Symbol, Bool)
+            fixupArgs (symbol, maybeDefault) = (Symbol symbol, maybeDefault)
+    consModule :: (Symbol, SourcePosition -> ArgParser (StateC [OVal])) -> [[(Text, Bool)]] -> (Symbol, OVal)
+    consModule func rawInstances = (name, ONModule name implementation instances)
+      where
+        (name, implementation) = func
+        instances = fmap fixup rawInstances
+        fixup :: [(Text, Bool)] -> [(Symbol, Bool)]
+        fixup (args) = fmap fixupArgs args
           where
             fixupArgs :: (Text, Bool) -> (Symbol, Bool)
             fixupArgs (symbol, maybeDefault) = (Symbol symbol, maybeDefault)
@@ -97,8 +104,8 @@ primitiveModules =
 -- | sphere is a module without a suite.
 --   this means that the parser will look for this like
 --   sphere(args...);
-sphere :: (Symbol, SourcePosition -> [OVal] -> ArgParser (StateC [OVal]))
-sphere = moduleWithoutSuite "sphere" $ \_ _ -> do
+sphere :: (Symbol, SourcePosition -> ArgParser (StateC [OVal]))
+sphere = moduleWithoutSuite "sphere" $ \_ -> do
     example "sphere(3);"
     example "sphere(r=5);"
     -- arguments:
@@ -120,8 +127,8 @@ sphere = moduleWithoutSuite "sphere" $ \_ _ -> do
 
 -- | FIXME: square1, square2 like cylinder has?
 --   FIXME: translate for square2?
-cube :: (Symbol, SourcePosition -> [OVal] -> ArgParser (StateC [OVal]))
-cube = moduleWithoutSuite "cube" $ \_ _ -> do
+cube :: (Symbol, SourcePosition -> ArgParser (StateC [OVal]))
+cube = moduleWithoutSuite "cube" $ \_ -> do
     -- examples
     example "cube(size = [2,3,4], center = true, r = 0.5);"
     example "cube(4);"
@@ -165,8 +172,8 @@ cube = moduleWithoutSuite "cube" $ \_ _ -> do
     -- Implementation
     addObj3 $ Prim.withRounding r $ Prim.rect3 (V3 x1 y1 z1) (V3 x2 y2 z2)
 
-square :: (Symbol, SourcePosition -> [OVal] -> ArgParser (StateC [OVal]))
-square = moduleWithoutSuite "square" $ \_ _ -> do
+square :: (Symbol, SourcePosition -> ArgParser (StateC [OVal]))
+square = moduleWithoutSuite "square" $ \_ -> do
     -- examples
     example "square(x=[-2,2], y=[-1,5]);"
     example "square(size = [3,4], center = true, r = 0.5);"
@@ -206,8 +213,8 @@ square = moduleWithoutSuite "square" $ \_ _ -> do
     -- Implementation
     addObj2 $ Prim.withRounding r $ Prim.rect (V2 x1 y1) (V2 x2 y2)
 
-cylinder :: (Symbol, SourcePosition -> [OVal] -> ArgParser (StateC [OVal]))
-cylinder = moduleWithoutSuite "cylinder" $ \_ _ -> do
+cylinder :: (Symbol, SourcePosition -> ArgParser (StateC [OVal]))
+cylinder = moduleWithoutSuite "cylinder" $ \_ -> do
     example "cylinder(r=10, h=30, center=true);"
     example "cylinder(r1=4, r2=6, h=10);"
     example "cylinder(r=5, h=10, $fn = 6);"
@@ -268,27 +275,31 @@ cylinder = moduleWithoutSuite "cylinder" $ \_ _ -> do
         in shift obj3
         else shift $ Prim.cylinder2 r1 r2 dh
 
-polyhedron :: (Symbol, SourcePosition -> [OVal] -> ArgParser (StateC [OVal]))
-polyhedron = moduleWithoutSuite "polyhedron" $ \_ _ -> do
+polyhedron :: (Symbol, SourcePosition -> ArgParser (StateC [OVal]))
+polyhedron = moduleWithoutSuite "polyhedron" $ \sourcePos -> do
     example "polyhedron(points=[[0,0,0], [2,0,0], [2,2,0], [0,2,0], [1, 1, 2]], faces=[[0,1,2,3], [0,5,1], [1,5,2], [2,5,3], [3,5,4], [4,5,0]]);"
     -- arguments
     points :: [ℝ3] <- argument "points" `defaultTo` [] `doc` "list of points to construct faces from"
     faces :: [[ℕ]] <- argument "faces" `defaultTo` [] `doc` "list of sets of indices into points, used to create faces on the polyhedron."
-    -- A tri is constructed of three indexes into the points.
-    -- This decomposes our faces into tris.
-    let
-      tris = concatMap trianglesFromFace faces
-      in
-      addObj3 $ Prim.polyhedron points tris
+    pure $ do
+      -- A tri is constructed of three indexes into the points.
+      -- This decomposes our faces into tris.
+      tris <- fmap concat $ mapM (trianglesFromFace sourcePos) faces
+      pure [OObj3 $ Prim.polyhedron points tris]
       where
-        -- FIXME: use warnC here, instead of error.
-        trianglesFromFace :: [ℕ] -> [(ℕ,ℕ,ℕ)]
-        trianglesFromFace [p1,p2,p3] = [(p1,p2,p3)]
-        trianglesFromFace (p1:p2:p3:xs) = ((p1,p2,p3):trianglesFromFace (p1:p3:xs))
-        trianglesFromFace ys = error $ "too few points:" <> (show ys) <> "\n"
+        trianglesFromFace :: SourcePosition -> [ℕ] -> StateC [(ℕ,ℕ,ℕ)]
+        trianglesFromFace _         []         = pure []
+        trianglesFromFace sourcePos [p1]       = do
+                                                 warnC sourcePos $ "only one point found: " <> (DTL.pack $ show p1) <> "\n"
+                                                 pure []
+        trianglesFromFace sourcePos [p1,p2]    = do
+                                                 warnC sourcePos $ "only two points found: " <> (DTL.pack $ show p1) <> "\n" <> (DTL.pack $ show p2) <> "\n"
+                                                 pure []
+        trianglesFromFace _         [p1,p2,p3] = pure [(p1,p2,p3)]
+        trianglesFromFace sourcePos (p1:p2:p3:xs) = ((p1,p2,p3):) <$> trianglesFromFace sourcePos (p1:p3:xs)
 
-cone :: (Symbol, SourcePosition -> [OVal] -> ArgParser (StateC [OVal]))
-cone = moduleWithoutSuite "cone" $ \_ _ -> do
+cone :: (Symbol, SourcePosition -> ArgParser (StateC [OVal]))
+cone = moduleWithoutSuite "cone" $ \_ -> do
     example "cone(r=10, h=30, center=true);"
     -- arguments
     r <- do
@@ -318,8 +329,8 @@ cone = moduleWithoutSuite "cone" $ \_ _ -> do
             else Prim.translate (V3 0 0 h1)
     addObj3 . shift $ Prim.cone r dh
 
-torus :: (Symbol, SourcePosition -> [OVal] -> ArgParser (StateC [OVal]))
-torus = moduleWithoutSuite "torus" $ \_ _ -> do
+torus :: (Symbol, SourcePosition -> ArgParser (StateC [OVal]))
+torus = moduleWithoutSuite "torus" $ \_ -> do
     example "torus(r1=10, r2=5);"
     -- arguments
     (r1, r2) <- (,)
@@ -332,8 +343,8 @@ torus = moduleWithoutSuite "torus" $ \_ _ -> do
     -- based on the args.
     addObj3 $ Prim.torus r1 r2
 
-ellipsoid :: (Symbol, SourcePosition -> [OVal] -> ArgParser (StateC [OVal]))
-ellipsoid = moduleWithoutSuite "ellipsoid" $ \_ _ -> do
+ellipsoid :: (Symbol, SourcePosition -> ArgParser (StateC [OVal]))
+ellipsoid = moduleWithoutSuite "ellipsoid" $ \_ -> do
     example "ellipsoid(a=1, b=2, c=3);"
     -- arguments
     (a, b, c) <- (,,)
@@ -347,8 +358,8 @@ ellipsoid = moduleWithoutSuite "ellipsoid" $ \_ _ -> do
     -- based on the args.
     addObj3 $ Prim.ellipsoid a b c
 
-circle :: (Symbol, SourcePosition -> [OVal] -> ArgParser (StateC [OVal]))
-circle = moduleWithoutSuite "circle" $ \_ _ -> do
+circle :: (Symbol, SourcePosition -> ArgParser (StateC [OVal]))
+circle = moduleWithoutSuite "circle" $ \_ -> do
     example "circle(r=10); // circle"
     example "circle(r=5, $fn=6); //hexagon"
     -- Arguments
@@ -376,8 +387,8 @@ circle = moduleWithoutSuite "circle" $ \_ _ -> do
 -- | FIXME: handle rectangles that are not grid alligned.
 --   FIXME: allow for rounding of polygon corners, specification of vertex ordering.
 --   FIXME: polygons have to have more than two points, or do not generate geometry, and generate an error.
-polygon :: (Symbol, SourcePosition -> [OVal] -> ArgParser (StateC [OVal]))
-polygon = moduleWithoutSuite "polygon" $ \_ _ -> do
+polygon :: (Symbol, SourcePosition -> ArgParser (StateC [OVal]))
+polygon = moduleWithoutSuite "polygon" $ \_ -> do
     example "polygon ([(0,0), (0,10), (10,0)]);"
     points :: [ℝ2]  <- argument "points"
                         `doc` "vertices of the polygon"
@@ -433,22 +444,26 @@ intersect = moduleWithSuite "intersection" $ \_ children -> do
         else objReduce  Prim.intersect      Prim.intersect     children
 
 difference :: (Symbol, SourcePosition -> [OVal] -> ArgParser (StateC [OVal]))
-difference = moduleWithSuite "difference" $ \_ children -> do
-    when (null children) $ APFail "Call to 'difference' requires at least one child"
+difference = moduleWithSuite "difference" $ \sourcePos children -> do
     r :: ℝ <- argument "r"
         `defaultTo` 0
         `doc` "Radius of rounding for the difference interface"
-    pure $ pure $ if r > 0
-        then objReduce (unsafeUncurry (Prim.differenceR r)) (unsafeUncurry (Prim.differenceR r)) children
-        else objReduce (unsafeUncurry  Prim.difference)     (unsafeUncurry  Prim.difference)     children
-  where
-    unsafeUncurry :: (a -> [a] -> c) -> [a] -> c
-    unsafeUncurry f = uncurry f . unsafeUncons
+    pure $ do
+      if (null children)
+        then do
+             errorC sourcePos "difference requires at least one element; none given."
+             pure []
+        else pure $ if r > 0
+                    then objReduce (unsafeUncurry (Prim.differenceR r)) (unsafeUncurry (Prim.differenceR r)) children
+                    else objReduce (unsafeUncurry  Prim.difference)     (unsafeUncurry  Prim.difference)     children
+        where
+          unsafeUncurry :: (a -> [a] -> c) -> [a] -> c
+          unsafeUncurry f = uncurry f . unsafeUncons
 
-    unsafeUncons :: [a] -> (a, [a])
-    unsafeUncons (a : as) = (a, as)
-    -- NOTE: This error is guarded against during the @null children@ check in the function body.
-    unsafeUncons _ = error "difference requires at least one element; zero given"
+          unsafeUncons :: [a] -> (a, [a])
+          unsafeUncons (a : as) = (a, as)
+          -- NOTE: This error is guarded against during the @null children@ check in the function body.
+          unsafeUncons _ = error "difference requires at least one element; zero given"
 
 translate :: (Symbol, SourcePosition -> [OVal] -> ArgParser (StateC [OVal]))
 translate = moduleWithSuite "translate" $ \_ children -> do
@@ -711,7 +726,7 @@ multmatrix = moduleWithSuite "multmatrix" $ \_ children -> do
 moduleWithSuite :: Text -> (SourcePosition -> [OVal] -> ArgParser (StateC [OVal])) -> (Symbol, SourcePosition -> [OVal] -> ArgParser (StateC [OVal]))
 moduleWithSuite name modArgMapper = (Symbol name, modArgMapper)
 
-moduleWithoutSuite :: Text -> (SourcePosition -> [OVal] -> ArgParser (StateC [OVal])) -> (Symbol, SourcePosition -> [OVal] -> ArgParser (StateC [OVal]))
+moduleWithoutSuite :: Text -> (SourcePosition -> ArgParser (StateC [OVal])) -> (Symbol, SourcePosition -> ArgParser (StateC [OVal]))
 moduleWithoutSuite name modArgMapper = (Symbol name, modArgMapper)
 
 addObj2 :: SymbolicObj2 -> ArgParser (StateC [OVal])

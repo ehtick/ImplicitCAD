@@ -13,7 +13,7 @@ import Graphics.Implicit.ExtOpenScad.Definitions (
                                                   Statement(Include, (:=), If, NewModule, ModuleCall, DoNothing),
                                                   Pattern(Name),
                                                   Expr(LitE),
-                                                  OVal(OBool, OUModule, ONModule, OVargsModule),
+                                                  OVal(OBool, OUModule, ONModule, ONModuleWithSuite, OVargsModule),
                                                   VarLookup(VarLookup),
                                                   StatementI(StatementI),
                                                   Symbol(Symbol),
@@ -117,14 +117,23 @@ runStatementI (StatementI sourcePos (ModuleCall (Symbol name) argsExpr suite)) =
             Just (ONModule _ implementation forms) -> do
               possibleInstances <- selectInstances forms
               let
-                suiteInfo = case possibleInstances of
-                  [(_, suiteInfoFound)]   -> suiteInfoFound
-                  []                      -> Nothing
-                  ((_, suiteInfoFound):_) -> suiteInfoFound
               when (null possibleInstances) (do
                                                 errorC sourcePos $ "no instance of " <> name <> " found to match given parameters.\nInstances available:\n" <> pack (show (ONModule (Symbol name) implementation forms))
-                                                traverse_ ((`checkOptions` True) . Just . fst) forms
+                                                traverse_ ((`checkOptions` True) . Just) forms
                                             )
+              -- Evaluate all of the arguments.
+              evaluatedArgs <- evalArgs argsExpr
+              -- Run the module.
+              let
+                argsMapped = argMap evaluatedArgs $ implementation sourcePos
+              for_ (pack <$> snd argsMapped) $ errorC sourcePos
+              fromMaybe (pure []) (fst argsMapped)
+            Just (ONModuleWithSuite _ implementation forms) -> do
+              possibleInstances <- selectInstances forms
+              let
+              when (null possibleInstances) $ do
+                                              errorC sourcePos $ "no instance of " <> name <> " found to match given parameters.\nInstances available:\n" <> pack (show (ONModuleWithSuite (Symbol name) implementation forms))
+                                              traverse_ ((`checkOptions` True) . Just) forms
               -- Ignore this for now, because all instances we define have the same suite requirements.
               {-
               when (length possibleInstances > 1) (do
@@ -135,14 +144,9 @@ runStatementI (StatementI sourcePos (ModuleCall (Symbol name) argsExpr suite)) =
               evaluatedArgs <- evalArgs argsExpr
               -- Evaluate the suite.
               vals <- runSuiteCapture varlookup suite
-              suiteResults <- case suiteInfo of
-                              Just True -> do
-                                when (null vals) (errorC sourcePos "Suite required, but none provided.")
-                                pure vals
-                              Just False -> pure vals
-                              _ -> do
-                                when (suite /= []) (errorC sourcePos $ "Suite provided, but module " <> name <> " does not accept one. Perhaps a missing semicolon?")
-                                pure []
+              suiteResults <- do
+                              when (null vals) (errorC sourcePos "Suite required, but none provided.")
+                              pure vals
               -- Run the module.
               let
                 argsMapped = argMap evaluatedArgs $ implementation sourcePos suiteResults
@@ -164,12 +168,12 @@ runStatementI (StatementI sourcePos (ModuleCall (Symbol name) argsExpr suite)) =
                 pure []
         pushVals newVals
           where
-            selectInstances :: [([(Symbol, Bool)], Maybe Bool)] -> StateC [([(Symbol, Bool)], Maybe Bool)]
+            selectInstances :: [[(Symbol, Bool)]] -> StateC [[(Symbol, Bool)]]
             selectInstances instances = do
               validInstances <- for instances
-                    ( \(args, suiteInfo) -> do
+                    ( \args -> do
                         res <- checkOptions (Just args) False
-                        pure $ if res then Just (args, suiteInfo) else Nothing
+                        pure $ if res then Just args else Nothing
                     )
               pure $ catMaybes validInstances
             checkOptions :: Maybe [(Symbol, Bool)] -> Bool -> StateC Bool

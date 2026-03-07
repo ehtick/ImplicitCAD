@@ -20,7 +20,7 @@ module Graphics.Implicit.ExtOpenScad.Definitions (ArgParser(AP, APTest, APBranch
                                                   Expr(LitE, Var, ListE, LamE, (:$)),
                                                   StatementI(StatementI),
                                                   Statement(DoNothing, NewModule, Include, If, ModuleCall, (:=)),
-                                                  OVal(OIO, ONum, OBool, OString, OList, OFunc, OUndefined, OUModule, ONModule, OVargsModule, OError, OObj2, OObj3),
+                                                  OVal(OIO, ONum, OBool, OString, OList, OFunc, OUndefined, OUModule, ONModule, ONModuleWithSuite, OVargsModule, OError, OObj2, OObj3),
                                                   TestInvariant(EulerCharacteristic),
                                                   SourcePosition(SourcePosition),
                                                   StateC,
@@ -37,7 +37,7 @@ module Graphics.Implicit.ExtOpenScad.Definitions (ArgParser(AP, APTest, APBranch
                                                   CanCompState'
                                                   ) where
 
-import Prelude(Eq, Show, Ord, Maybe(Just), Bool(True, False), IO, FilePath, (==), show, ($), (<>), and, zipWith, Int, (<$>))
+import Prelude(Eq, Show, Ord, Maybe, Bool(True, False), IO, FilePath, (==), show, ($), (<>), and, zipWith, Int, (<$>))
 
 -- Resolution of the world, Integer type, and symbolic languages for 2D and 3D objects.
 import Graphics.Implicit.Definitions (ℝ, ℕ, Fastℕ, SymbolicObj2, SymbolicObj3, fromFastℕ)
@@ -119,6 +119,7 @@ data ArgParser a
                  -- ^ For returns: @APTerminator (return value)@
                  | APFail Text
                  -- ^ For failure: @APFail (error message)@
+                 -- NOTE: we don't use APFail to fail parsing in Primitives.hs, we have errorC.
                  | APExample Text (ArgParser a)
                  -- ^ An example, then next
                  | APTest Text [TestInvariant] (ArgParser a)
@@ -197,8 +198,10 @@ data OVal = OUndefined
          | OIO (IO OVal)
          -- Name, arguments, argument parsers.
          | OUModule Symbol (Maybe [(Symbol, Bool)]) (VarLookup -> ArgParser (StateC [OVal]))
-         -- Name, implementation, arguments, whether the module accepts/requires a suite.
-         | ONModule Symbol (SourcePosition -> [OVal] -> ArgParser (StateC [OVal])) [([(Symbol, Bool)],  Maybe Bool)]
+         -- Name, implementation, arguments.
+         | ONModule Symbol (SourcePosition -> ArgParser (StateC [OVal])) [[(Symbol, Bool)]]
+         -- Name, implementation, arguments.
+         | ONModuleWithSuite Symbol (SourcePosition -> [OVal] -> ArgParser (StateC [OVal])) [[(Symbol, Bool)]]
          | OVargsModule Symbol (Symbol -> SourcePosition -> [(Maybe Symbol, OVal)] -> [StatementI] -> ([StatementI] -> StateC ()) -> StateC ())
          | OObj3 SymbolicObj3
          | OObj2 SymbolicObj2
@@ -230,18 +233,23 @@ instance Show OVal where
         showArg (Symbol a, hasDefault) = if hasDefault
                                          then a
                                          else a <> "=..."
-        showInstances :: [([(Symbol, Bool)], Maybe Bool)] -> Text
+        showInstances :: [[(Symbol, Bool)]] -> Text
         showInstances [] = ""
         showInstances [oneInstance] = "module " <> name <> showInstance oneInstance
         showInstances multipleInstances = "Module " <> name <> "[ " <> intercalate ", " (showInstance <$> multipleInstances) <> " ]"
-        showInstance :: ([(Symbol, Bool)], Maybe Bool) -> Text
-        showInstance (arguments, suiteInfo) = " (" <> intercalate ", " (showArg <$> arguments) <> ") {}" <> showSuiteInfo suiteInfo
-        showSuiteInfo :: Maybe Bool -> Text
-        showSuiteInfo suiteInfo = case suiteInfo of
-                          Just requiresSuite -> if requiresSuite
-                                                then " requiring suite {}"
-                                                else " accepting suite {}"
-                          _ -> ""
+        showInstance :: [(Symbol, Bool)] -> Text
+        showInstance arguments = " (" <> intercalate ", " (showArg <$> arguments) <> ") "
+    show (ONModuleWithSuite (Symbol name) _ instances) = unpack $ showInstances instances
+      where
+        showArg (Symbol a, hasDefault) = if hasDefault
+                                         then a
+                                         else a <> "=..."
+        showInstances :: [[(Symbol, Bool)]] -> Text
+        showInstances [] = ""
+        showInstances [oneInstance] = "module " <> name <> showInstance oneInstance
+        showInstances multipleInstances = "Module " <> name <> "[ " <> intercalate ", " (showInstance <$> multipleInstances) <> " ]"
+        showInstance :: [(Symbol, Bool)] -> Text
+        showInstance arguments = " (" <> intercalate ", " (showArg <$> arguments) <> ") {} requiring suite {}"
     show (OVargsModule (Symbol name) _) = "varargs module " <> unpack name
     show (OError msg) = unpack $ "Execution Error:\n" <> msg
     show (OObj2 obj) = "<obj2: " <> show obj <> ">"

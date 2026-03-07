@@ -6,7 +6,7 @@
 
 import Prelude(IO, Show, String, Int, Maybe(Just,Nothing), Eq, return, ($), show, fmap, (<>), putStrLn, filter, zip, null, undefined, const, Bool(True,False), fst, (.), head, length, (/=), (+), error, print, drop)
 import Graphics.Implicit.ExtOpenScad.Primitives (primitiveModules)
-import Graphics.Implicit.ExtOpenScad.Definitions (ArgParser(AP,APFail,APExample,APTest,APTerminator,APBranch), Symbol(Symbol), OVal(ONModule), SourcePosition(SourcePosition), StateC)
+import Graphics.Implicit.ExtOpenScad.Definitions (ArgParser(AP,APFail,APExample,APTest,APTerminator,APBranch), Symbol(Symbol), OVal(ONModule, ONModuleWithSuite), SourcePosition(SourcePosition), StateC)
 
 import qualified Control.Exception as Ex (catch, SomeException)
 import Control.Monad (forM_)
@@ -114,9 +114,10 @@ main = do
           dumpPrimitive moduleName moduleDocList 0
           where
             getArgParserFrom :: (Symbol, OVal) -> ArgParser(StateC [OVal])
-            getArgParserFrom (_, ONModule _ implementation _) = implementation sourcePosition []
-              where sourcePosition = SourcePosition 0 0 "docgen"
+            getArgParserFrom (_, ONModule _ implementation _) = implementation sourcePosition
+            getArgParserFrom (_, ONModuleWithSuite _ implementation _) = implementation sourcePosition []
             getArgParserFrom (_, _) = error "bad value in primitive array."
+            sourcePosition = SourcePosition 0 0 "docgen"
 
 -- | the format we extract documentation into
 data Doc = Doc String [DocPart]

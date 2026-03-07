@@ -245,8 +245,8 @@ insideMesh triangles point = odd . length . filter (==True) $ foundIntersection 
       | u + v > 1-eps-eps     = False
       | otherwise             = t > 0
       where
-        -- fudge factor.
         -- adjusted from: 6,7,9,12,15,17,18==(43,171), 16 ==(38,171)
+        -- fudge factor.
         eps :: ℝ
         eps = 1e-16
         -- Our edge vectors. We have picked v1 to address the space by, for convenience.

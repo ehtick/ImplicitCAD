@@ -18,7 +18,7 @@ import Prelude(Maybe(Just, Nothing), Bool(True, False), Either(Left,Right), (==)
 
 import Graphics.Implicit.Definitions(V2, ℝ, ℝ2, ℕ, SymbolicObj2, SymbolicObj3, ExtrudeMScale(C1, C2, Fn), fromℕtoℝ)
 
-import Graphics.Implicit.ExtOpenScad.Definitions (OVal(ONum, OBool, OString, OList, OFunc, OUndefined, OUModule, ONModule, OVargsModule, OError, OObj2, OObj3, OIO))
+import Graphics.Implicit.ExtOpenScad.Definitions (OVal(ONum, OBool, OString, OList, OFunc, OUndefined, OUModule, ONModule, ONModuleWithSuite, OVargsModule, OError, OObj2, OObj3, OIO))
 
 import Control.Monad (msum)
 
@@ -168,7 +168,8 @@ oTypeStr (OString        _ ) = "String"
 oTypeStr (OFunc          _ ) = "Function"
 oTypeStr (OIO            _ ) = "IO"
 oTypeStr (OUModule {}      ) = "User Defined Module"
-oTypeStr (ONModule {}      ) = "Built-in Module"
+oTypeStr (ONModuleWithSuite {}) = "Built-in Module with suite"
+oTypeStr (ONModule {}) = "Built-in Module"
 oTypeStr (OVargsModule _ _ ) = "VargsModule"
 oTypeStr (OError         _ ) = "Error"
 oTypeStr (OObj2          _ ) = "2D Object"
