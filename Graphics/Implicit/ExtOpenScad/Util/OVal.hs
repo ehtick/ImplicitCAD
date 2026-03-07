@@ -160,20 +160,20 @@ instance OTypeMirror ExtrudeMScale where
 
 -- A string representing each type.
 oTypeStr :: OVal -> Text
-oTypeStr OUndefined         = "Undefined"
-oTypeStr (OBool          _ ) = "Bool"
-oTypeStr (ONum           _ ) = "Number"
-oTypeStr (OList          _ ) = "List"
-oTypeStr (OString        _ ) = "String"
-oTypeStr (OFunc          _ ) = "Function"
-oTypeStr (OIO            _ ) = "IO"
-oTypeStr (OUModule {}      ) = "User Defined Module"
+oTypeStr OUndefined             = "Undefined"
+oTypeStr (OBool             _ ) = "Bool"
+oTypeStr (ONum              _ ) = "Number"
+oTypeStr (OList             _ ) = "List"
+oTypeStr (OString           _ ) = "String"
+oTypeStr (OFunc             _ ) = "Function"
+oTypeStr (OIO               _ ) = "IO"
+oTypeStr (OUModule {}         ) = "User Defined Module"
 oTypeStr (ONModuleWithSuite {}) = "Built-in Module with suite"
-oTypeStr (ONModule {}) = "Built-in Module"
-oTypeStr (OVargsModule _ _ ) = "VargsModule"
-oTypeStr (OError         _ ) = "Error"
-oTypeStr (OObj2          _ ) = "2D Object"
-oTypeStr (OObj3          _ ) = "3D Object"
+oTypeStr (ONModule {}         ) = "Built-in Module"
+oTypeStr (OVargsModule    _ _ ) = "VargsModule"
+oTypeStr (OError            _ ) = "Error"
+oTypeStr (OObj2             _ ) = "2D Object"
+oTypeStr (OObj3             _ ) = "3D Object"
 
 getErrors :: OVal -> Maybe Text
 getErrors (OError er) = Just er
