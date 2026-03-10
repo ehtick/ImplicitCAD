@@ -3,16 +3,18 @@
 -- Implicit CAD. Copyright (C) 2011, Christopher Olah (chris@colah.ca)
 -- Released under the GNU AGPLV3+, see LICENSE
 
-module Graphics.Implicit.ObjectUtil.GetImplicit3 (getImplicit3) where
+module Graphics.Implicit.ObjectUtil.GetImplicit3 (getImplicit3, distancePointToTriangle, closestPointToTriangle) where
 
 -- Import only what we need from the prelude.
-import Prelude (abs, atan2, cos, ceiling, either, error, floor, fromInteger, id, max, min, minimum, negate, odd, otherwise, pi, pure, round, show, sin, sqrt, (||), (/=), Either(Left, Right), (<), (<=), (<>), (>), (>=), (&&), (-), (/), (*), (+), ($), (.), Bool(True, False), (==), (**), Num, Applicative, (<$>))
+import Prelude (abs, atan2, cos, ceiling, either, error, floor, fromInteger, id, max, min, minimum, negate, otherwise, pi, pure, round, show, sin, sqrt, (||), (/=), Either(Left, Right), (<), (<=), (<>), (>), (>=), (&&), (-), (/), (*), (+), ($), (.), Bool(True, False), (==), (**), Num, Applicative, (<$>))
 
 import Control.Lens ((^.))
 
 import qualified Data.Either as Either (either)
 
-import Data.List(filter, genericIndex, length)
+import Data.List (genericIndex, length, minimumBy)
+
+import Data.Ord (compare)
 
 import Linear (V2(V2), V3(V3), _xy, _z, distance, dot)
 import qualified Linear (conjugate, inv44, normalizePoint, normalize, point, rotate, Metric)
@@ -77,10 +79,24 @@ getImplicit3 _ (Cylinder h r1 r2) = \(V3 x y z) ->
 getImplicit3 _ (Polyhedron [] _) = error "Asked to find distance to an empty polygon. No points."
 getImplicit3 _ (Polyhedron _ []) = error "Asked to find distance to an empty polygon. No tris."
 getImplicit3 _ (Polyhedron points tris) = \(point) ->
-  if insideMesh triangles point
-  then negate $ minimum $ distancePointToTriangle point <$> triangles
-  else          minimum $ distancePointToTriangle point <$> triangles
+  let
+    (res, closestTri) = unsignedDistanceAndTriangleClosestTo point
+  in
+    if pointOnOutside point closestTri
+    then          res
+    else negate $ res
   where
+    unsignedDistanceAndTriangleClosestTo point = minimumBy (\(a,_) (b,_) -> a `compare` b) $ distTris point
+    distTris point = (\a -> (distancePointToTriangle point a, a)) <$> triangles
+    -- NOTE: May get slightly different values, depending on the V selected.
+    normOfTri :: (V3 ℝ,V3 ℝ,V3 ℝ) -> V3 ℝ
+    normOfTri (v1,v2,v3) = Linear.normalize $ (v2-v1) `cross` (v3-v1)
+    firstPointOfTri (v1,_,_) = v1
+    pointOnOutside point closestTri = (point - firstPointOfTri closestTri) `dot` normOfTri closestTri >= -eps
+      where
+        -- fudge factor.
+        eps :: ℝ
+        eps = 1e-13
     -- decompose our tris into triangles.
     triangles = findTriangle points <$> tris
     -- FIXME: make these indices correct by construction?
@@ -94,7 +110,7 @@ getImplicit3 _ (Polyhedron points tris) = \(point) ->
         where
           -- FIXME: >=BASE-4.21: replace this with compareLength once debian stable ships 4.21.
           outOfRange :: ℕ -> Bool
-          outOfRange v = v < 0 || length virtices < fromℕ v
+          outOfRange v = v < 0 || length virtices <= fromℕ v
 getImplicit3 _ (BoxFrame b e) = \p' ->
     let p@(V3 px py pz) = abs p' - b
         V3 qx qy qz = abs (p + pure e) - pure e
@@ -227,53 +243,14 @@ getImplicit3 ctx (RotateExtrude totalRotation translate rotate symbObj) =
               else obj rz_pos
 getImplicit3 ctx (Shared3 obj) = getImplicitShared ctx obj
 
--- | Check to see if a point is inside or outside of a mesh.
--- FIXME: Replace this with a winding number based approach. See: https://github.com/marmakoide/inside-3d-mesh/blob/master/README.md
-insideMesh :: [(V3 ℝ, V3 ℝ, V3 ℝ)] -> V3 ℝ -> Bool
-insideMesh triangles point = odd . length . filter (==True) $ foundIntersection point unsafeSafeRay <$> triangles
-  where
-    -- our assumed safe ray. it's not really safe, but.. gotta start somewhere.
-    unsafeSafeRay :: V3 ℝ
-    unsafeSafeRay = Linear.normalize $ V3 (sqrt 2) (sqrt 3) (sqrt 5)
-    foundIntersection :: V3 ℝ -> V3 ℝ -> (V3 ℝ, V3 ℝ, V3 ℝ) -> Bool
-    foundIntersection source direction (v1, v2, v3)
-      -- shouldn't happen, triangle is on the same plane as unsafeSafeRay
-      | abs determinate < eps = False
-      -- the intersection is not on the triangle (distance along vec12 out of range)
-      | u < eps || u > 1-eps  = False
-      | v < eps || v > 1-eps  = False
-      | u + v > 1-eps-eps     = False
-      | otherwise             = t > 0
-      where
-        -- adjusted from: 6,7,9,12,15,17,18==(43,171), 16 ==(38,171)
-        -- fudge factor.
-        eps :: ℝ
-        eps = 1e-16
-        -- Our edge vectors. We have picked v1 to address the space by, for convenience.
-        vec12 = v2 - v1
-        vec13 = v3 - v1
-        -- The normal of the plane formed by vec13 and our 'safe' vector. at 90 degree angles to both.
-        norm13d = direction `cross` vec13
-        -- The determinate. A volume. AKA, how close to parallel are the triangle, and the plane with normal norm13d.
-        determinate = vec12 `dot` norm13d
-        -- An edge vector in our 'safe' direction, from v1.
-        vec1s = source - v1
-        -- The distance along vec12 to find the intersection of a ray from source in direction direction, and the plane our triangle is on.
-        u = (vec1s `dot` norm13d) / determinate
-        -- The normal of the plane fromed by vec12 and vec1s.
-        norm121s = vec1s `cross` vec12
-        -- The distance along vec13 to find the intersection of a ray from source in direction direction, and the plane our triangle is on.
-        v = (direction `dot` norm121s) / determinate
-        -- The distance along the ray to find the intersection of a ray from source in direction direction, and the plane our triangle is on.
-        t = (vec13 `dot` norm121s) / determinate
-
+-- | You see, what I thought I'd do is put a raytracer inside of a raytracer... what could go wrong...
 -- With inspiration from: https://github.com/RenderKit/embree/blob/master/tutorials/common/math/closest_point.h
 distancePointToTriangle :: V3 ℝ -> (V3 ℝ,V3 ℝ,V3 ℝ) -> ℝ
-distancePointToTriangle point (virtex1, virtex2, virtex3) = distance point closestPointToTriangleCenteredSorted
+distancePointToTriangle point triangle@(virtex1, virtex2, virtex3) = distance point closestPointToTriangleCenteredSorted
   where
     -- Reorder triangles such that we use the corner away from the longest side to address the space in barycentric coordinates.
     closestPointToTriangleCenteredSorted :: V3 ℝ
-    closestPointToTriangleCenteredSorted = closestPointToTriangleCentered adjustedTriangle
+    closestPointToTriangleCenteredSorted = closestPointToTriangle triangle point -- closestPointToTriangleCentered adjustedTriangle
       where
         adjustedTriangle
           | abLength >= bcLength && abLength >= caLength = (virtex3, virtex1, virtex2)
@@ -291,53 +268,56 @@ distancePointToTriangle point (virtex1, virtex2, virtex3) = distance point close
         originDistance = 1/3 *^ (vir1 + vir2 + vir3)
         adjustedTriangle = (vir1 - originDistance, vir2 - originDistance, vir3 - originDistance)
         adjustedPoint = point - originDistance
-    closestPointToTriangle :: (V3 ℝ,V3 ℝ,V3 ℝ) -> V3 ℝ -> V3 ℝ
-    closestPointToTriangle (v1, v2, v3) p
-      -- Closest to the virtices
-      | d1 <=  eps && d2 <= eps = v1
-      | d3  > -eps && d4 <=  d3 = v2
-      | d6  > -eps && d5 <=  d6 = v3
-      -- Closest to the edges
-      | vc <= eps && d1 > -eps && d3 <=  eps = v1 + (d1 / (d1 - d3)) *^ vec12
-      | vb <= eps && d2 > -eps && d6 <=  eps = v1 + (d2 / (d2 - d6)) *^ vec13
-      | va <= eps && dx > -eps && dy  > -eps = v2 + (dx / (dx + dy)) *^ vec23
-      -- On the triangle's surface
-      | otherwise = v1 + v *^ vec12 + w *^ vec13
-      where
-        -- fudge factor. chosen by tuning with our unit pyramid.
-        -- 3,11 = 52 , 12 == 50, 13,14,15,18 == 45
-        eps :: ℝ
-        eps = 1e-13
-        -- The distance along edge12 and edge23, for segment V1 -> P when translated onto the triangle's plane.
-        -- (P when translaned? Read: a line is drawn down to the plane the triangle is on, from p, to a point that is at a right angle with said line.)
-        d1 = vec12 `dot` vec1p
-        d2 = vec13 `dot` vec1p
-        -- Our edge vectors. We have picked v1 to address the space by, for convenience.
-        vec12 = v2 - v1
-        vec13 = v3 - v1
-        -- A segment between our point, and chosen virtex.
-        vec1p =  p - v1
-        -- Distance along edge12 and edge23, for segment V2 -> P when translated onto the triangle's plane.
-        d3 = vec12 `dot` vec2p
-        d4 = vec13 `dot` vec2p
-        -- A segment between our point, and the second virtex.
-        vec2p =  p - v2
-        -- Distance along edge12 and edge23, for segment V3 -> P when translated onto the triangle's plane.
-        d5 = vec12 `dot` vec3p
-        d6 = vec13 `dot` vec3p
-        -- A segment between our point, and the third virtex.
-        vec3p =  p - v3
-        -- An edge vector, along edge23.
-        vec23 = v3 - v2
-        -- The fractional denenominators.
-        va = d1 * d4 - d3 * d2
-        vb = d2 * d5 - d6 * d1
-        vc = d3 * d6 - d5 * d4
-        -- Two convienience values, to make the spacing on the formulas above work.
-        dx = d4 - d3
-        dy = d5 - d6
-        -- The denominator.
-        denom = va + vb + vc
-        -- barycentric results, where we actually intersect.
-        v = vb / denom
-        w = vc / denom
+
+closestPointToTriangle :: (V3 ℝ,V3 ℝ,V3 ℝ) -> V3 ℝ -> V3 ℝ
+closestPointToTriangle (v1, v2, v3) p
+  -- Closest to the virtices
+  | d1 <= 0 && d2 <=  0 = v1
+  | d3 >= 0 && d4 <= d3 = v2
+  | d6 >= 0 && d5 <= d6 = v3
+  -- Nearest to the edges
+  | va <= 0 && d1 > 0 && d3 <= 0 = v1 + (d1 / (d1 - d3)) *^ vec12
+  | vb <= 0 && d2 > 0 && d6 <= 0 = v1 + (d2 / (d2 - d6)) *^ vec13
+  | vc <= 0 && dx > 0 && dy  > 0 = v2 + (dx / (dx + dy)) *^ vec23
+  -- Exactly on an edge, don't bother dividing by zero, please.
+  | denom == 0 = p
+  -- On the triangle's surface
+  | otherwise = v1 + v *^ vec12 + w *^ vec13
+  where
+    -- fudge factor. chosen by tuning with our unit pyramid.
+    -- 3,11 = 52 , 12 == 50, 13,14,15,18 == 45
+    eps :: ℝ
+    eps = 1e-13
+    -- The distance along edge12 and edge23, for segment V1 -> P when translated onto the triangle's plane.
+    -- (P when translaned? Read: a line is drawn down to the plane the triangle is on, from p, to a point that is at a right angle with said line.)
+    d1 = vec12 `dot` vec1p
+    d2 = vec13 `dot` vec1p
+    -- Our edge vectors. We have picked v1 to address the space by, for convenience.
+    vec12 = v2 - v1
+    vec13 = v3 - v1
+    -- A segment between our point, and chosen virtex.
+    vec1p =  p - v1
+    -- Distance along edge12 and edge23, for segment V2 -> P when translated onto the triangle's plane.
+    d3 = vec12 `dot` vec2p
+    d4 = vec13 `dot` vec2p
+    -- A segment between our point, and the second virtex.
+    vec2p =  p - v2
+    -- Distance along edge12 and edge23, for segment V3 -> P when translated onto the triangle's plane.
+    d5 = vec12 `dot` vec3p
+    d6 = vec13 `dot` vec3p
+    -- A segment between our point, and the third virtex.
+    vec3p =  p - v3
+    -- An edge vector, along edge23.
+    vec23 = v3 - v2
+    -- The fractional denenominators.
+    va = d1 * d4 - d3 * d2
+    vb = d2 * d5 - d6 * d1
+    vc = d3 * d6 - d5 * d4
+    -- Two convienience values, to make the spacing on the formulas above work.
+    dx = d4 - d3
+    dy = d5 - d6
+    -- The denominator.
+    denom = va + vb + vc
+    -- barycentric results, where we actually intersect.
+    v = vb / denom
+    w = va / denom

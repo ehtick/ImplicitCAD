@@ -15,9 +15,11 @@
 -- Export one set containing all of the primitive modules.
 module Graphics.Implicit.ExtOpenScad.Primitives (primitiveModules) where
 
-import Prelude(concat, mapM, (.), Either(Left, Right), Bool(True, False), Maybe(Just, Nothing), ($), pure, show, either, id, (-), (==), (&&), (<), (*), cos, sin, pi, (/), (>), const, uncurry, (/=), (||), not, null, fmap, (<>), otherwise, error, (<*>), (<$>))
+import Prelude(any, concat, elem, foldr, head, mapM, (.), Either(Left, Right), Bool(True, False), Maybe(Just, Nothing), ($), pure, show, either, id, (-), (==), (&&), (<), (*), cos, sin, pi, (/), (>), const, uncurry, (/=), (||), not, null, fmap, (<>), otherwise, error, (<*>), (<$>))
 
 import Graphics.Implicit.Definitions (ℝ, ℝ2, ℝ3, ℕ, SymbolicObj2, SymbolicObj3, ExtrudeMScale(C1), fromℕtoℝ, isScaleID)
+
+import Graphics.Implicit.Export.Util (centroid)
 
 import Graphics.Implicit.ExtOpenScad.Definitions (OVal (OObj2, OObj3, ONModule, ONModuleWithSuite), ArgParser, Symbol(Symbol), StateC, SourcePosition)
 
@@ -32,13 +34,24 @@ import Graphics.Implicit.ExtOpenScad.Util.StateC (errorC, warnC)
 -- Note the use of a qualified import, so we don't have the functions in this file conflict with what we're importing.
 import qualified Graphics.Implicit.Primitives as Prim (withRounding, sphere, rect3, rect, translate, circle, polygon, polyhedron, extrude, cylinder2, union, unionR, intersect, intersectR, difference, differenceR, rotate, slice, transform, rotate3V, rotate3, transform3, scale, extrudeM, rotateExtrude, shell, mirror, pack3, pack2, torus, ellipsoid, cone)
 
-import Control.Monad (mplus)
+import Control.Monad (foldM, mplus)
+
+import Data.Foldable (toList)
+
+import Data.List (genericIndex)
+
+import Data.Sequence (Seq, deleteAt, filter, fromList)
+import qualified Data.Sequence as DS (null)
 
 import Data.Text.Lazy (Text)
 import qualified Data.Text.Lazy as DTL (pack)
 
+import Data.Maybe (isJust)
+
 import Control.Lens ((^.))
-import Linear (_m33, M34, M44, V2(V2), V3(V3), V4(V4))
+
+import Linear (_m33, cross, dot, M34, M44, V2(V2), V3(V3), V4(V4))
+
 import Linear.Affine (qdA)
 
 default (ℝ)
@@ -275,6 +288,9 @@ cylinder = moduleWithoutSuite "cylinder" $ \_ -> do
         in shift obj3
         else shift $ Prim.cylinder2 r1 r2 dh
 
+-- A triangle, with the points in an external index.
+type Tri = (ℕ,ℕ,ℕ)
+
 polyhedron :: (Symbol, SourcePosition -> ArgParser (StateC [OVal]))
 polyhedron = moduleWithoutSuite "polyhedron" $ \sourcePos -> do
     example "polyhedron(points=[[0,0,0], [2,0,0], [2,2,0], [0,2,0], [1, 1, 2]], faces=[[0,1,2,3], [0,5,1], [1,5,2], [2,5,3], [3,5,4], [4,5,0]]);"
@@ -283,12 +299,15 @@ polyhedron = moduleWithoutSuite "polyhedron" $ \sourcePos -> do
     faces :: [[ℕ]] <- argument "faces" `defaultTo` [] `doc` "list of sets of indices into points, used to create faces on the polyhedron."
     pure $ do
       -- A tri is constructed of three indexes into the points.
-      -- This decomposes our faces into tris.
       tris <- fmap concat $ mapM (trianglesFromFace sourcePos) faces
-      pure [OObj3 $ Prim.polyhedron points tris]
+      woundTris <- reWindTriangles sourcePos points tris
+      pure [OObj3 $ Prim.polyhedron points woundTris]
       where
-        trianglesFromFace :: SourcePosition -> [ℕ] -> StateC [(ℕ,ℕ,ℕ)]
-        trianglesFromFace _         []         = pure []
+        -- decompose our faces into tris.
+        trianglesFromFace :: SourcePosition -> [ℕ] -> StateC [Tri]
+        trianglesFromFace sourcePos []         = do
+                                                 errorC sourcePos "no point found when trying to generate triangles from a face.\n"
+                                                 pure []
         trianglesFromFace sourcePos [p1]       = do
                                                  warnC sourcePos $ "only one point found: " <> (DTL.pack $ show p1) <> "\n"
                                                  pure []
@@ -297,6 +316,69 @@ polyhedron = moduleWithoutSuite "polyhedron" $ \sourcePos -> do
                                                  pure []
         trianglesFromFace _         [p1,p2,p3] = pure [(p1,p2,p3)]
         trianglesFromFace sourcePos (p1:p2:p3:xs) = ((p1,p2,p3):) <$> trianglesFromFace sourcePos (p1:p3:xs)
+        -- | Ensure our triangles are wound in the same direction
+        reWindTriangles :: SourcePosition -> [ℝ3] -> [Tri] -> StateC [Tri]
+        reWindTriangles _         _ [] = pure []
+        -- Really, forces them to have the same winding as the first triangle, from us putting [tri] here.
+        reWindTriangles sourcePos points (tri:moreTris) = windTriangles [safeTri] (fromList moreTris)
+          where
+            polyCentroid = centroid points
+            -- The first triangle, flipped based on comparing two centroids.
+            safeTri
+              | (triCentroid - polyCentroid) `dot` triNorm < 0 = flipTri tri
+              | otherwise                                      = tri
+              where
+                (p1,p2,p3) = tri
+                (v1,v2,v3) = (genericIndex points p1,genericIndex points p2,genericIndex points p3)
+                -- The norm of the safe triangle.
+                triNorm    = (v2-v1) `cross` (v3-v1)
+                triCentroid = centroid [v1,v2,v3]
+                -- type conversion.
+            flipTri (p1,p2,p3) = (p1,p3,p2)
+            -- | Wind the triangles.
+            windTriangles :: [Tri] -> Seq Tri -> StateC [Tri]
+            windTriangles visited unvisited
+              -- We're done.
+              | DS.null unvisited = pure visited
+              | otherwise = do
+                  (newVisited, newUnvisited) <- foldM (classifyTri visited) ([], unvisited) (toList unvisited)
+                  if null newVisited
+                    then do
+                         warnC sourcePos $ "Had to pick a new root"
+                         windTriangles (visited <> [head $ toList newUnvisited]) (deleteAt 0 newUnvisited)
+                    else windTriangles (visited <> newVisited)                   newUnvisited
+            -- | Compare one unvisited triangle against all visited triangles.
+            -- If it's a neighbor of a visited triangle, correct it's winding and throw a warning if we had to flip it, then move it from unvisited to found (after flipping).
+            classifyTri :: [Tri] -> ([Tri], Seq Tri) -> Tri -> StateC ([Tri], Seq Tri)
+            classifyTri visited (found, remaining) triUnderTest =
+              case res of
+                Just triFound -> do -- See if we flipped our tri, and if so, throw a warning.
+                                 if triFound /= triUnderTest
+                                   then warnC sourcePos $ "Flipped face detected with vertices " <> (DTL.pack $ show triUnderTest)
+                                   else pure ()
+                                 pure (found <> [triFound], filter (/= triUnderTest) remaining)
+                Nothing ->       pure (found, remaining)
+              where
+                res = foldr (\tri state -> firstNeighborFilter tri triUnderTest state) Nothing visited 
+                -- | A short-circuiting filter we fold over visited, and grab the first neighboring tri.
+                firstNeighborFilter :: Tri -> Tri -> Maybe Tri -> Maybe Tri
+                firstNeighborFilter src triUnderTest res
+                  | isJust res = res
+                  | otherwise  = maybeWindNeighbor src triUnderTest
+                -- | Checks whether a triangle under test is a neighbor of the given triangle, and if it is, returns if after ensuring it is wound in the proper direction.
+                maybeWindNeighbor :: Tri -> Tri -> Maybe Tri
+                maybeWindNeighbor src triUnderTest
+                -- A correctly wound neighbor will have the opposite direction, when it is referring to a given edge.
+                  | oppositeNeighbor = Just           triUnderTest
+                -- A neighbor that needs flipped will refer to an edge in the same direction as our given triangle.
+                  | sameNeighbor     = Just $ flipTri triUnderTest
+                  | otherwise = Nothing
+                  where
+                    oppositeNeighbor = any (\edge -> flip edge `elem` edgesOfTri src) $ edgesOfTri triUnderTest
+                      where
+                        flip (a,b) = (b,a)
+                    sameNeighbor     = any (\edge ->      edge `elem` edgesOfTri src) $ edgesOfTri triUnderTest
+                    edgesOfTri (p1,p2,p3) = [(p1,p2), (p2,p3), (p3,p1)]
 
 cone :: (Symbol, SourcePosition -> ArgParser (StateC [OVal]))
 cone = moduleWithoutSuite "cone" $ \_ -> do
