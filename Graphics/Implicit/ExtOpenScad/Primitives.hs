@@ -318,21 +318,20 @@ polyhedron = moduleWithoutSuite "polyhedron" $ \sourcePos -> do
         -- | Ensure our triangles are wound in the same direction
         reWindTriangles :: SourcePosition -> [ℝ3] -> [Tri] -> StateC [Tri]
         reWindTriangles _         _ [] = pure []
-        -- Really, forces them to have the same winding as the first triangle, from us putting [tri] here.
-        reWindTriangles sourcePos points (tri:moreTris) = windTriangles [safeTri] (fromList moreTris)
+        -- Really, forces them to have the same winding as the first triangle, from us putting [safeTri] here.
+        reWindTriangles sourcePos points (firstTri:moreTris) = windTriangles [safeTri] (fromList moreTris)
           where
-            polyCentroid = centroid points
             -- The first triangle, flipped based on comparing two centroids.
             safeTri
-              | (triCentroid - polyCentroid) `dot` triNorm < 0 = flipTri tri
-              | otherwise                                      = tri
+              | (triCentroid - polyCentroid) `dot` triNorm < 0 = flipTri firstTri
+              | otherwise                                      = firstTri
               where
-                (p1,p2,p3) = tri
+                (p1,p2,p3) = firstTri
                 (v1,v2,v3) = (genericIndex points p1,genericIndex points p2,genericIndex points p3)
                 -- The norm of the safe triangle.
                 triNorm    = (v2-v1) `cross` (v3-v1)
                 triCentroid = centroid [v1,v2,v3]
-                -- type conversion.
+            polyCentroid = centroid points
             flipTri (p1,p2,p3) = (p1,p3,p2)
             -- | Wind the triangles.
             windTriangles :: [Tri] -> Seq Tri -> StateC [Tri]
@@ -343,7 +342,7 @@ polyhedron = moduleWithoutSuite "polyhedron" $ \sourcePos -> do
                   (newVisited, newUnvisited) <- foldM (classifyTri visited) ([], unvisited) (toList unvisited)
                   if null newVisited
                     then do
-                         warnC sourcePos $ "Had to pick a new root"
+                         warnC sourcePos $ "Had to pick a new root, incomplete polyhedron?"
                          windTriangles (visited <> [head $ toList newUnvisited]) (deleteAt 0 newUnvisited)
                     else windTriangles (visited <> newVisited)                   newUnvisited
             -- | Compare one unvisited triangle against all visited triangles.
@@ -352,31 +351,31 @@ polyhedron = moduleWithoutSuite "polyhedron" $ \sourcePos -> do
             classifyTri visited (found, remaining) triUnderTest =
               case res of
                 Just triFound -> do -- See if we flipped our tri, and if so, throw a warning.
-                                 if triFound /= triUnderTest
-                                   then warnC sourcePos $ "Flipped face detected with vertices " <> (DTL.pack $ show triUnderTest)
-                                   else pure ()
-                                 pure (found <> [triFound], filter (/= triUnderTest) remaining)
+                  if triFound /= triUnderTest
+                    then warnC sourcePos $ "Flipped face detected with vertices " <> (DTL.pack $ show triUnderTest)
+                    else pure ()
+                  pure (found <> [triFound], filter (/= triUnderTest) remaining)
                 Nothing ->       pure (found, remaining)
               where
                 res = foldr (\tri state -> firstNeighborFilter tri triUnderTest state) Nothing visited 
                 -- | A short-circuiting filter we fold over visited, and grab the first neighboring tri.
                 firstNeighborFilter :: Tri -> Tri -> Maybe Tri -> Maybe Tri
-                firstNeighborFilter src triUnderTest res
-                  | isJust res = res
-                  | otherwise  = maybeWindNeighbor src triUnderTest
+                firstNeighborFilter src testTri maybeRes
+                  | isJust maybeRes = maybeRes
+                  | otherwise  = maybeWindNeighbor src testTri
                 -- | Checks whether a triangle under test is a neighbor of the given triangle, and if it is, returns if after ensuring it is wound in the proper direction.
                 maybeWindNeighbor :: Tri -> Tri -> Maybe Tri
-                maybeWindNeighbor src triUnderTest
+                maybeWindNeighbor src testTri
                 -- A correctly wound neighbor will have the opposite direction, when it is referring to a given edge.
-                  | oppositeNeighbor = Just           triUnderTest
+                  | oppositeNeighbor = Just           testTri
                 -- A neighbor that needs flipped will refer to an edge in the same direction as our given triangle.
-                  | sameNeighbor     = Just $ flipTri triUnderTest
+                  | sameNeighbor     = Just $ flipTri testTri
                   | otherwise = Nothing
                   where
-                    oppositeNeighbor = any (\edge -> flip edge `elem` edgesOfTri src) $ edgesOfTri triUnderTest
+                    oppositeNeighbor = any (\edge -> flip edge `elem` edgesOfTri src) $ edgesOfTri testTri
                       where
                         flip (a,b) = (b,a)
-                    sameNeighbor     = any (\edge ->      edge `elem` edgesOfTri src) $ edgesOfTri triUnderTest
+                    sameNeighbor     = any (\edge ->      edge `elem` edgesOfTri src) $ edgesOfTri testTri
                     edgesOfTri (p1,p2,p3) = [(p1,p2), (p2,p3), (p3,p1)]
 
 cone :: (Symbol, SourcePosition -> ArgParser (StateC [OVal]))
