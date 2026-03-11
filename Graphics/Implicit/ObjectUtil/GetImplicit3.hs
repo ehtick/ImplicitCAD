@@ -6,15 +6,23 @@
 module Graphics.Implicit.ObjectUtil.GetImplicit3 (getImplicit3, distancePointToTriangle, closestPointToTriangle) where
 
 -- Import only what we need from the prelude.
-import Prelude (abs, atan2, cos, ceiling, either, error, floor, fromInteger, id, max, min, minimum, negate, otherwise, pi, pure, round, show, sin, sqrt, (||), (/=), Either(Left, Right), (<), (<=), (<>), (>), (>=), (&&), (-), (/), (*), (+), ($), (.), Bool(True, False), (==), (**), Num, Applicative, (<$>))
+import Prelude (abs, atan2, acos, cos, ceiling, either, error, floor, fromInteger, fromIntegral, id, max, min, minimum, negate, otherwise, pi, pure, round, show, snd, sin, sqrt, sum, (||), (/=), Either(Left, Right), (<), (<=), (<>), (>), (>=), (&&), (-), (/), (*), (+), (++), ($), (.), Bool(True, False), (==), (**), Num, Applicative, Int, (<$>), Eq)
 
 import Control.Lens ((^.))
 
 import qualified Data.Either as Either (either)
 
-import Data.List (genericIndex, length, minimumBy)
+import Data.Foldable (toList)
+
+import Data.List (concatMap, genericIndex, length, minimumBy)
+
+import Data.Map (fromListWith, lookup, Map)
+
+import Data.Maybe (fromMaybe)
 
 import Data.Ord (compare)
+
+import Data.Sequence (fromList, mapWithIndex)
 
 import Linear (V2(V2), V3(V3), _xy, _z, distance, dot)
 import qualified Linear (conjugate, inv44, normalizePoint, normalize, point, rotate, Metric)
@@ -80,37 +88,58 @@ getImplicit3 _ (Polyhedron [] _) = error "Asked to find distance to an empty pol
 getImplicit3 _ (Polyhedron _ []) = error "Asked to find distance to an empty polygon. No tris."
 getImplicit3 _ (Polyhedron points tris) = \(point) ->
   let
-    (res, closestTri) = unsignedDistanceAndTriangleClosestTo point
+    ((feature,res), closestTri) = unsignedDistanceAndTriangleClosestTo point
   in
-    if pointOnOutside point closestTri
+    if pointOnOutside point (findTriangle points closestTri) closestTri feature
     then          res
     else negate $ res
   where
-    unsignedDistanceAndTriangleClosestTo point = minimumBy (\(a,_) (b,_) -> a `compare` b) $ distTris point
-    distTris point = (\a -> (distancePointToTriangle point a, a)) <$> triangles
-    -- NOTE: May get slightly different values, depending on the V selected.
-    normOfTri :: (V3 ℝ,V3 ℝ,V3 ℝ) -> V3 ℝ
-    normOfTri (v1,v2,v3) = Linear.normalize $ (v2-v1) `cross` (v3-v1)
+    unsignedDistanceAndTriangleClosestTo point = minimumBy (\((_,a),_) ((_,b),_) -> a `compare` b) $ featDistTriangles point
+    featDistTriangles point = (\a -> (distancePointToTriangle point (findTriangle points a), a)) <$> tris
     firstPointOfTri (v1,_,_) = v1
-    pointOnOutside point closestTri = (point - firstPointOfTri closestTri) `dot` normOfTri closestTri >= -eps
+    pointOnOutside :: ℝ3 -> (ℝ3,ℝ3,ℝ3) -> (ℕ,ℕ,ℕ) -> ClosestFeature -> Bool
+    pointOnOutside point closestTriangle closestTri feature = (point - firstPointOfTri closestTriangle) `dot` (weighedNormish points closestTri feature) >= -eps
       where
         -- fudge factor.
         eps :: ℝ
         eps = 1e-13
-    -- decompose our tris into triangles.
-    triangles = findTriangle points <$> tris
-    -- FIXME: make these indices correct by construction?
-    findTriangle :: [V3 ℝ] -> (ℕ,ℕ,ℕ) -> (V3 ℝ, V3 ℝ, V3 ℝ)
-    findTriangle virtices (i1,i2,i3)
-      | outOfRange i1 = error $ "bad virtex index(out of range): " <> show i1 <> "\n"
-      | outOfRange i2 = error $ "bad virtex index(out of range): " <> show i2 <> "\n"
-      | outOfRange i3 = error $ "bad virtex index(out of range): " <> show i3 <> "\n"
-      -- FIXME: there are many more degenerate forms of polyhedron possible here. move polyhedron to only holding a mesh?
-      | otherwise = (genericIndex virtices i1, genericIndex virtices i2, genericIndex virtices i3)
-        where
-          -- FIXME: >=BASE-4.21: replace this with compareLength once debian stable ships 4.21.
-          outOfRange :: ℕ -> Bool
-          outOfRange v = v < 0 || length virtices <= fromℕ v
+        triSeq = fromList tris
+        -- For each edge, the tri indexes that share that edge: 
+        triByEdge :: Map (ℕ,ℕ) [Int]
+        triByEdge = fromListWith (++) edgeTris
+          where
+            edgeTris = concatMap edgesOfTri $ toList $ mapWithIndex (,) triSeq
+            edgesOfTri :: (Int,(ℕ,ℕ,ℕ)) -> [((ℕ,ℕ),[Int])]
+            edgesOfTri (i,(p1,p2,p3)) = [(sortEdge p1 p2,[i]),(sortEdge p2 p3,[i]),(sortEdge p3 p1,[i])]
+        sortEdge a b = (min a b, max a b)
+        -- For each vertex, the tri indexes that contain that vertex: 
+        triByVertex :: Map ℕ [Int]
+        triByVertex = fromListWith (++) vertexTris
+          where
+            vertexTris = concatMap vertexesOfTri $ toList $ mapWithIndex (,) triSeq
+            vertexesOfTri :: (Int,(ℕ,ℕ,ℕ)) -> [(ℕ,[Int])]
+            vertexesOfTri (i,(p1,p2,p3)) = [(p1,[i]),(p2,[i]),(p3,[i])]  
+        -- Get the normalized average of a set of triangles, referred to by index.
+        averageNorm triangles triIndexes = Linear.normalize $ sum $ normOfTriangle . genericIndex triangles <$> triIndexes
+        weighedNormish :: [ℝ3] -> (ℕ,ℕ,ℕ) -> ClosestFeature -> ℝ3
+        weighedNormish points tri@(p1,p2,p3) closest
+          | closest == FeatFace = normOfTriangle closestTriangle
+          | closest == FeatEdge12 = averageNorm triangles $ fromMaybe [] $ lookup (sortEdge p1 p2) triByEdge 
+          | closest == FeatEdge13 = averageNorm triangles $ fromMaybe [] $ lookup (sortEdge p1 p3) triByEdge 
+          | closest == FeatEdge23 = averageNorm triangles $ fromMaybe [] $ lookup (sortEdge p2 p3) triByEdge
+          | closest == FeatVertex1 = Linear.normalize $ sum $ angleWeighed (genericIndex points p1) <$> fromMaybe [] (lookup p1 triByVertex)
+          | closest == FeatVertex2 = Linear.normalize $ sum $ angleWeighed (genericIndex points p2) <$> fromMaybe [] (lookup p2 triByVertex)
+          | closest == FeatVertex3 = Linear.normalize $ sum $ angleWeighed (genericIndex points p3) <$> fromMaybe [] (lookup p3 triByVertex)
+          | otherwise = normOfTriangle closestTriangle
+          where
+            closestTriangle = findTriangle points tri
+        angleWeighed :: ℝ3 -> Int -> ℝ3
+        angleWeighed vertex triNo = angleAt vertex triangle *^ normOfTriangle triangle
+          where
+            triangle = findTriangle points $ genericIndex tris triNo
+        -- decompose our tris into triangles.
+        triangles = findTriangle points <$> tris
+
 getImplicit3 _ (BoxFrame b e) = \p' ->
     let p@(V3 px py pz) = abs p' - b
         V3 qx qy qz = abs (p + pure e) - pure e
@@ -225,9 +254,9 @@ getImplicit3 ctx (RotateExtrude totalRotation translate rotate symbObj) =
                         [0 .. floor $ (totalRotation - θ) / tau]
             n <- ns
             let
-                θvirt = fromℕtoℝ n * tau + θ
-                (V2 rshift zshift) = translate' θvirt
-                twist = rotate' θvirt
+                θvert = fromℕtoℝ n * tau + θ
+                (V2 rshift zshift) = translate' θvert
+                twist = rotate' θvert
                 rz_pos = if twists
                         then let
                             (c,s) = (cos twist, sin twist)
@@ -238,51 +267,81 @@ getImplicit3 ctx (RotateExtrude totalRotation translate rotate symbObj) =
             pure $
               if capped
               then rmax round'
-                    (abs (θvirt - (totalRotation / 2)) - (totalRotation / 2))
+                    (abs (θvert - (totalRotation / 2)) - (totalRotation / 2))
                     (obj rz_pos)
               else obj rz_pos
 getImplicit3 ctx (Shared3 obj) = getImplicitShared ctx obj
 
+-- The closest part of a triangle to a point.
+data ClosestFeature = FeatVertex1 | FeatVertex2 | FeatVertex3 | FeatEdge12 | FeatEdge13 | FeatEdge23 | FeatFace
+  deriving Eq
+
+-- FIXME: make these indices correct by construction?
+findTriangle :: [V3 ℝ] -> (ℕ,ℕ,ℕ) -> (V3 ℝ, V3 ℝ, V3 ℝ)
+findTriangle vertices (i1,i2,i3)
+  | outOfRange i1 = error $ "bad vertex index(out of range): " <> show i1 <> "\n"
+  | outOfRange i2 = error $ "bad vertex index(out of range): " <> show i2 <> "\n"
+  | outOfRange i3 = error $ "bad vertex index(out of range): " <> show i3 <> "\n"
+  -- FIXME: there are many more degenerate forms of polyhedron possible here. move polyhedron to only holding a mesh?
+  | otherwise = (genericIndex vertices i1, genericIndex vertices i2, genericIndex vertices i3)
+  where
+    -- FIXME: >=BASE-4.21: replace this with compareLength once debian stable ships 4.21.
+    outOfRange :: ℕ -> Bool
+    outOfRange v = v < 0 || length vertices <= fromℕ v
+
+normOfTriangle :: (ℝ3,ℝ3,ℝ3) -> ℝ3
+normOfTriangle (v1,v2,v3) = Linear.normalize $ (v2-v1) `cross` (v3-v1)
+
+angleAt :: ℝ3 -> (ℝ3,ℝ3,ℝ3) -> ℝ
+angleAt vertex (v1,v2,v3)
+  | vertex == v1 = acos $ clamp $ Linear.normalize (v2-v1) `dot` Linear.normalize (v3-v1)
+  | vertex == v2 = acos $ clamp $ Linear.normalize (v1-v2) `dot` Linear.normalize (v3-v2)
+  | vertex == v3 = acos $ clamp $ Linear.normalize (v1-v3) `dot` Linear.normalize (v2-v3)
+  where
+    clamp = max (-1) . min 1
+
 -- | You see, what I thought I'd do is put a raytracer inside of a raytracer... what could go wrong...
 -- With inspiration from: https://github.com/RenderKit/embree/blob/master/tutorials/common/math/closest_point.h
-distancePointToTriangle :: V3 ℝ -> (V3 ℝ,V3 ℝ,V3 ℝ) -> ℝ
-distancePointToTriangle point triangle@(virtex1, virtex2, virtex3) = distance point closestPointToTriangleCenteredSorted
+distancePointToTriangle :: V3 ℝ -> (V3 ℝ,V3 ℝ,V3 ℝ) -> (ClosestFeature, ℝ)
+distancePointToTriangle point triangle@(vertex1, vertex2, vertex3) = (resFeature, distance point res)
   where
+    (resFeature, res) = closestPointToTriangleCenteredSorted
     -- Reorder triangles such that we use the corner away from the longest side to address the space in barycentric coordinates.
-    closestPointToTriangleCenteredSorted :: V3 ℝ
+    closestPointToTriangleCenteredSorted :: (ClosestFeature, ℝ3)
     closestPointToTriangleCenteredSorted = closestPointToTriangle triangle point -- closestPointToTriangleCentered adjustedTriangle
       where
         adjustedTriangle
-          | abLength >= bcLength && abLength >= caLength = (virtex3, virtex1, virtex2)
-          | abLength >= caLength                         = (virtex1, virtex2, virtex3)
-          | otherwise                                    = (virtex2, virtex3, virtex1)
+          | abLength >= bcLength && abLength >= caLength = (vertex3, vertex1, vertex2)
+          | abLength >= caLength                         = (vertex1, vertex2, vertex3)
+          | otherwise                                    = (vertex2, vertex3, vertex1)
           where
             -- Really, using length-squared. don't have to abs it, don't have to sqrt it.
-            abLength = (virtex2-virtex1) `dot` (virtex2-virtex1)
-            bcLength = (virtex3-virtex2) `dot` (virtex3-virtex2)
-            caLength = (virtex1-virtex3) `dot` (virtex1-virtex3)
+            abLength = (vertex2-vertex1) `dot` (vertex2-vertex1)
+            bcLength = (vertex3-vertex2) `dot` (vertex3-vertex2)
+            caLength = (vertex1-vertex3) `dot` (vertex1-vertex3)
     -- Force closestPointToTriangle to work at the origin
-    closestPointToTriangleCentered :: (V3 ℝ,V3 ℝ,V3 ℝ) -> V3 ℝ
-    closestPointToTriangleCentered (vir1, vir2, vir3) = originDistance + closestPointToTriangle adjustedTriangle adjustedPoint
+    closestPointToTriangleCentered :: (V3 ℝ,V3 ℝ,V3 ℝ) -> (ClosestFeature, ℝ3)
+    closestPointToTriangleCentered (ver1, ver2, ver3) = (resFeature, originDistance + res)
       where
-        originDistance = 1/3 *^ (vir1 + vir2 + vir3)
-        adjustedTriangle = (vir1 - originDistance, vir2 - originDistance, vir3 - originDistance)
+        (resFeature, res) = closestPointToTriangle adjustedTriangle adjustedPoint
+        originDistance = 1/3 *^ (ver1 + ver2 + ver3)
+        adjustedTriangle = (ver1 - originDistance, ver2 - originDistance, ver3 - originDistance)
         adjustedPoint = point - originDistance
 
-closestPointToTriangle :: (V3 ℝ,V3 ℝ,V3 ℝ) -> V3 ℝ -> V3 ℝ
+closestPointToTriangle :: (V3 ℝ,V3 ℝ,V3 ℝ) -> V3 ℝ -> (ClosestFeature, V3 ℝ)
 closestPointToTriangle (v1, v2, v3) p
-  -- Closest to the virtices
-  | d1 <= 0 && d2 <=  0 = v1
-  | d3 >= 0 && d4 <= d3 = v2
-  | d6 >= 0 && d5 <= d6 = v3
+  -- Closest to the vertices
+  | d1 <= 0 && d2 <=  0 = (FeatVertex1, v1)
+  | d3 >= 0 && d4 <= d3 = (FeatVertex2, v2)
+  | d6 >= 0 && d5 <= d6 = (FeatVertex3, v3)
   -- Nearest to the edges
-  | va <= 0 && d1 > 0 && d3 <= 0 = v1 + (d1 / (d1 - d3)) *^ vec12
-  | vb <= 0 && d2 > 0 && d6 <= 0 = v1 + (d2 / (d2 - d6)) *^ vec13
-  | vc <= 0 && dx > 0 && dy  > 0 = v2 + (dx / (dx + dy)) *^ vec23
+  | va <= 0 && d1 > 0 && d3 <= 0 = (FeatEdge12, v1 + (d1 / (d1 - d3)) *^ vec12)
+  | vb <= 0 && d2 > 0 && d6 <= 0 = (FeatEdge13, v1 + (d2 / (d2 - d6)) *^ vec13)
+  | vc <= 0 && dx > 0 && dy  > 0 = (FeatEdge23, v2 + (dx / (dx + dy)) *^ vec23)
   -- Exactly on an edge, don't bother dividing by zero, please.
-  | denom == 0 = p
+  | denom == 0 = (FeatFace, p)
   -- On the triangle's surface
-  | otherwise = v1 + v *^ vec12 + w *^ vec13
+  | otherwise = (FeatFace, v1 + v *^ vec12 + w *^ vec13)
   where
     -- fudge factor. chosen by tuning with our unit pyramid.
     -- 3,11 = 52 , 12 == 50, 13,14,15,18 == 45
@@ -295,17 +354,17 @@ closestPointToTriangle (v1, v2, v3) p
     -- Our edge vectors. We have picked v1 to address the space by, for convenience.
     vec12 = v2 - v1
     vec13 = v3 - v1
-    -- A segment between our point, and chosen virtex.
+    -- A segment between our point, and chosen vertex.
     vec1p =  p - v1
     -- Distance along edge12 and edge23, for segment V2 -> P when translated onto the triangle's plane.
     d3 = vec12 `dot` vec2p
     d4 = vec13 `dot` vec2p
-    -- A segment between our point, and the second virtex.
+    -- A segment between our point, and the second vertex.
     vec2p =  p - v2
     -- Distance along edge12 and edge23, for segment V3 -> P when translated onto the triangle's plane.
     d5 = vec12 `dot` vec3p
     d6 = vec13 `dot` vec3p
-    -- A segment between our point, and the third virtex.
+    -- A segment between our point, and the third vertex.
     vec3p =  p - v3
     -- An edge vector, along edge23.
     vec23 = v3 - v2
