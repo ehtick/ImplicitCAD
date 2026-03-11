@@ -31,6 +31,8 @@ import Graphics.Implicit.ExtOpenScad.Util.OVal (OTypeMirror, caseOType, divideOb
 
 import Graphics.Implicit.ExtOpenScad.Util.StateC (errorC, warnC)
 
+import Graphics.Implicit.TriUtil (Tri)
+
 -- Note the use of a qualified import, so we don't have the functions in this file conflict with what we're importing.
 import qualified Graphics.Implicit.Primitives as Prim (withRounding, sphere, rect3, rect, translate, circle, polygon, polyhedron, extrude, cylinder2, union, unionR, intersect, intersectR, difference, differenceR, rotate, slice, transform, rotate3V, rotate3, transform3, scale, extrudeM, rotateExtrude, shell, mirror, pack3, pack2, torus, ellipsoid, cone)
 
@@ -287,9 +289,6 @@ cylinder = moduleWithoutSuite "cylinder" $ \_ -> do
             obj3 = Prim.extrude dh obj2
         in shift obj3
         else shift $ Prim.cylinder2 r1 r2 dh
-
--- A triangle, with the points in an external index.
-type Tri = (ℕ,ℕ,ℕ)
 
 polyhedron :: (Symbol, SourcePosition -> ArgParser (StateC [OVal]))
 polyhedron = moduleWithoutSuite "polyhedron" $ \sourcePos -> do
