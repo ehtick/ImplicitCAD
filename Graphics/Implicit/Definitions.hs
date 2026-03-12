@@ -328,7 +328,7 @@ instance Monoid SymbolicObj2 where
 -- | A symbolic 3D format!
 data SymbolicObj3 =
     -- Primitives
-      Cube ℝ3 -- rounding, size.
+      Cube ℝ3 -- size
     | Sphere ℝ -- radius
     | Cylinder ℝ ℝ ℝ --
     -- Simple transforms
