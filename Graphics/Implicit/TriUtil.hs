@@ -15,7 +15,8 @@ module Graphics.Implicit.TriUtil (
   ClosestFeature(FeatFace,
                  FeatVertex1, FeatVertex2, FeatVertex3,
                  FeatEdge12,  FeatEdge13,  FeatEdge23),
-  Tri
+  Tri,
+  Triangle
   ) where
 
 import Prelude (acos, error, length, max, min, otherwise, show, (>), (<), (&&), (<=), (>=),($), (.), (/), (+), (-), (*), (==), (||), (<>), Bool, Eq)
@@ -46,6 +47,7 @@ data ClosestFeature = FeatVertex1 | FeatVertex2 | FeatVertex3 | FeatEdge12 | Fea
   deriving Eq
 
 -- FIXME: Make these indices correct by construction?
+-- | Reconstitune a Triangle from a Tri, and our points array.
 findTriangle :: [ℝ3] -> Tri -> Triangle
 findTriangle vertices (i1,i2,i3)
   | outOfRange i1 = error $ "bad vertex index(out of range): " <> show i1 <> "\n"
@@ -58,9 +60,11 @@ findTriangle vertices (i1,i2,i3)
     outOfRange :: ℕ -> Bool
     outOfRange v = v < 0 || length vertices <= fromℕ v
 
+-- | Find the normal of a given Triangle
 normOfTriangle :: Triangle -> ℝ3
 normOfTriangle (v1,v2,v3) = Linear.normalize $ (v2-v1) `cross` (v3-v1)
 
+-- find the angle of the corner of the triangle containing a given vertex.
 angleAt :: ℝ3 -> Triangle -> ℝ
 angleAt vertex (v1,v2,v3)
   | vertex == v1 = acos $ clamp $ Linear.normalize (v2-v1) `dot` Linear.normalize (v3-v1)

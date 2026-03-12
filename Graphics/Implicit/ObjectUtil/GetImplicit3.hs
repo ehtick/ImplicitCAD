@@ -6,7 +6,7 @@
 module Graphics.Implicit.ObjectUtil.GetImplicit3 (getImplicit3) where
 
 -- Import only what we need from the prelude.
-import Prelude (abs, atan2, acos, cos, ceiling, either, error, floor, fromInteger, fromIntegral, id, max, min, minimum, negate, otherwise, pi, pure, round, show, snd, sin, sqrt, sum, (||), (/=), Either(Left, Right), (<), (<=), (<>), (>), (>=), (&&), (-), (/), (*), (+), (++), ($), (.), Bool(True, False), (==), (**), Num, Applicative, Int, (<$>), Eq)
+import Prelude (abs, atan2, cos, ceiling, either, error, floor, fromInteger, id, max, min, minimum, negate, otherwise, pi, pure, round, sin, sqrt, sum, (||), (/=), Either(Left, Right), (>=), (-), (/), (*), (+), (++), ($), (.), Bool(True, False), (==), (**), Num, Applicative, Int, (<$>))
 
 import Control.Lens ((^.))
 
@@ -14,7 +14,7 @@ import qualified Data.Either as Either (either)
 
 import Data.Foldable (toList)
 
-import Data.List (concatMap, genericIndex, length, minimumBy)
+import Data.List (concatMap, genericIndex, minimumBy)
 
 import Data.Map (fromListWith, lookup, Map)
 
@@ -26,9 +26,6 @@ import Data.Sequence (fromList, mapWithIndex)
 
 import Linear (V2(V2), V3(V3), _xy, _z, distance, dot)
 import qualified Linear (conjugate, inv44, normalizePoint, normalize, point, rotate, Metric)
-
--- The cross product.
-import Linear.V3 (cross)
 
 -- Matrix times column vector.
 import Linear.Matrix ((!*))
@@ -46,14 +43,13 @@ import Graphics.Implicit.Definitions
       ℝ2,
       ℝ,
       fromℕtoℝ,
-      fromℕ,
       toScaleFn,
       ℝ3 )
 
 -- For handling extrusion of 2D shapes to 3D.
 import {-# SOURCE #-} Graphics.Implicit.Primitives (getImplicit)
 
-import Graphics.Implicit.TriUtil (angleAt, distancePointToTriangle, findTriangle, normOfTriangle, ClosestFeature(..), Tri)
+import Graphics.Implicit.TriUtil (angleAt, distancePointToTriangle, findTriangle, normOfTriangle, ClosestFeature(FeatVertex1, FeatVertex2, FeatVertex3, FeatEdge12, FeatEdge13, FeatEdge23, FeatFace), Tri, Triangle)
 
 import Graphics.Implicit.MathUtil (rmax, rmaximum)
 
@@ -100,8 +96,8 @@ getImplicit3 _ (Polyhedron points tris) = \(point) ->
     unsignedDistanceAndTriangleClosestTo point = minimumBy (\((_,a),_) ((_,b),_) -> a `compare` b) $ featDistTriangles point
     featDistTriangles point = (\a -> (distancePointToTriangle point (findTriangle points a), a)) <$> tris
     firstPointOfTri (v1,_,_) = v1
-    pointOnOutside :: ℝ3 -> (ℝ3,ℝ3,ℝ3) -> (ℕ,ℕ,ℕ) -> ClosestFeature -> Bool
-    pointOnOutside point closestTriangle closestTri feature = (point - firstPointOfTri closestTriangle) `dot` (weighedNormish points closestTri feature) >= -eps
+    pointOnOutside :: ℝ3 -> Triangle -> Tri -> ClosestFeature -> Bool
+    pointOnOutside point closestTriangle closestTri feature = (point - firstPointOfTri closestTriangle) `dot` (weighedNormish closestTri feature) >= -eps
       where
         -- fudge factor.
         eps :: ℝ
@@ -112,7 +108,7 @@ getImplicit3 _ (Polyhedron points tris) = \(point) ->
         triByEdge = fromListWith (++) edgeTris
           where
             edgeTris = concatMap edgesOfTri $ toList $ mapWithIndex (,) triSeq
-            edgesOfTri :: (Int,(ℕ,ℕ,ℕ)) -> [((ℕ,ℕ),[Int])]
+            edgesOfTri :: (Int,Tri) -> [((ℕ,ℕ),[Int])]
             edgesOfTri (i,(p1,p2,p3)) = [(sortEdge p1 p2,[i]),(sortEdge p2 p3,[i]),(sortEdge p3 p1,[i])]
         sortEdge a b = (min a b, max a b)
         -- For each vertex, the tri indexes that contain that vertex: 
@@ -120,29 +116,26 @@ getImplicit3 _ (Polyhedron points tris) = \(point) ->
         triByVertex = fromListWith (++) vertexTris
           where
             vertexTris = concatMap vertexesOfTri $ toList $ mapWithIndex (,) triSeq
-            vertexesOfTri :: (Int,(ℕ,ℕ,ℕ)) -> [(ℕ,[Int])]
+            vertexesOfTri :: (Int,Tri) -> [(ℕ,[Int])]
             vertexesOfTri (i,(p1,p2,p3)) = [(p1,[i]),(p2,[i]),(p3,[i])]  
         -- Get the normalized average of a set of triangles, referred to by index.
-        averageNorm triangles triIndexes = Linear.normalize $ sum $ normOfTriangle . genericIndex triangles <$> triIndexes
-        weighedNormish :: [ℝ3] -> (ℕ,ℕ,ℕ) -> ClosestFeature -> ℝ3
-        weighedNormish points tri@(p1,p2,p3) closest
+        averageNorm triIndexes = Linear.normalize $ sum $ normOfTriangle . genericIndex triangles <$> triIndexes
+        weighedNormish :: Tri -> ClosestFeature -> ℝ3
+        weighedNormish (p1,p2,p3) closest
           | closest == FeatFace = normOfTriangle closestTriangle
-          | closest == FeatEdge12 = averageNorm triangles $ fromMaybe [] $ lookup (sortEdge p1 p2) triByEdge 
-          | closest == FeatEdge13 = averageNorm triangles $ fromMaybe [] $ lookup (sortEdge p1 p3) triByEdge 
-          | closest == FeatEdge23 = averageNorm triangles $ fromMaybe [] $ lookup (sortEdge p2 p3) triByEdge
+          | closest == FeatEdge12 = averageNorm $ fromMaybe [] $ lookup (sortEdge p1 p2) triByEdge 
+          | closest == FeatEdge13 = averageNorm $ fromMaybe [] $ lookup (sortEdge p1 p3) triByEdge 
+          | closest == FeatEdge23 = averageNorm $ fromMaybe [] $ lookup (sortEdge p2 p3) triByEdge
           | closest == FeatVertex1 = Linear.normalize $ sum $ angleWeighed (genericIndex points p1) <$> fromMaybe [] (lookup p1 triByVertex)
           | closest == FeatVertex2 = Linear.normalize $ sum $ angleWeighed (genericIndex points p2) <$> fromMaybe [] (lookup p2 triByVertex)
           | closest == FeatVertex3 = Linear.normalize $ sum $ angleWeighed (genericIndex points p3) <$> fromMaybe [] (lookup p3 triByVertex)
           | otherwise = normOfTriangle closestTriangle
-          where
-            closestTriangle = findTriangle points tri
         angleWeighed :: ℝ3 -> Int -> ℝ3
         angleWeighed vertex triNo = angleAt vertex triangle *^ normOfTriangle triangle
           where
             triangle = findTriangle points $ genericIndex tris triNo
         -- decompose our tris into triangles.
         triangles = findTriangle points <$> tris
-
 getImplicit3 _ (BoxFrame b e) = \p' ->
     let p@(V3 px py pz) = abs p' - b
         V3 qx qy qz = abs (p + pure e) - pure e
