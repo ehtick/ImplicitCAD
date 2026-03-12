@@ -3,9 +3,12 @@
 -- Copyright 2014-2026, Julia Longtin (julia.longtin@gmail.com)
 -- Released under the GNU AGPLV3+, see LICENSE
 
+-- You see, what I thought I'd do is put a raytracer inside of a raytracer... what could go wrong...
+-- With inspiration from: https://github.com/RenderKit/embree/blob/master/tutorials/common/math/closest_point.h
+
 module Graphics.Implicit.TriUtil (
   angleAt,
-  closestPointToTriangle,
+  closestFeatureToTriangle,
   distancePointToTriangle,
   findTriangle,
   normOfTriangle,
@@ -65,40 +68,55 @@ angleAt vertex (v1,v2,v3)
   | vertex == v3 = acos $ clamp $ Linear.normalize (v1-v3) `dot` Linear.normalize (v2-v3)
   | otherwise = error $ "tried to get angleAt with a point not one of the vertexes: " <> show vertex <> "\n"
   where
+    clamp :: ℝ -> ℝ
     clamp = max (-1) . min 1
 
--- | You see, what I thought I'd do is put a raytracer inside of a raytracer... what could go wrong...
--- With inspiration from: https://github.com/RenderKit/embree/blob/master/tutorials/common/math/closest_point.h
 distancePointToTriangle :: ℝ3 -> Triangle -> (ClosestFeature, ℝ)
-distancePointToTriangle point triangle@(vertex1, vertex2, vertex3) = (resFeature, distance point res)
+distancePointToTriangle point (vertex1, vertex2, vertex3) = (adjustedFeature, distance point pointOnFeature)
   where
-    (resFeature, res) = closestPointToTriangleCenteredSorted
-    -- Reorder triangles such that we use the corner away from the longest side to address the space in barycentric coordinates.
-    closestPointToTriangleCenteredSorted :: (ClosestFeature, ℝ3)
--- FIXME: test the following, rather than what's here.
---    closestPointToTriangleCenteredSorted = closestPointToTriangleCentered adjustedTriangle
-    closestPointToTriangleCenteredSorted = closestPointToTriangle triangle point
+    (resFeature, pointOnFeature) = closestFeatureToTriangleCentered adjustedTriangle point
+    -- First math precision transform: change which adressing system we use for the triangle, ensuring the far side is 'away' from the virtex we address from.
+    adjustedFeature
+      | adjustedTriangle == (vertex3, vertex1, vertex2) =
+        case resFeature of
+          FeatVertex1 -> FeatVertex3
+          FeatVertex2 -> FeatVertex1
+          FeatVertex3 -> FeatVertex2
+          FeatEdge12  -> FeatEdge13
+          FeatEdge13  -> FeatEdge23
+          FeatEdge23  -> FeatEdge12
+          FeatFace -> FeatFace
+      | adjustedTriangle == (vertex2, vertex3, vertex1) =
+        case resFeature of
+          FeatVertex1 -> FeatVertex2
+          FeatVertex2 -> FeatVertex3
+          FeatVertex3 -> FeatVertex1
+          FeatEdge12  -> FeatEdge23
+          FeatEdge13  -> FeatEdge12
+          FeatEdge23  -> FeatEdge13
+          FeatFace -> FeatFace
+      | otherwise = resFeature
+    adjustedTriangle
+      | abLength >= bcLength && abLength >= caLength = (vertex3, vertex1, vertex2)
+      | abLength >= caLength                         = (vertex1, vertex2, vertex3)
+      | otherwise                                    = (vertex2, vertex3, vertex1)
       where
-        adjustedTriangle
-          | abLength >= bcLength && abLength >= caLength = (vertex3, vertex1, vertex2)
-          | abLength >= caLength                         = (vertex1, vertex2, vertex3)
-          | otherwise                                    = (vertex2, vertex3, vertex1)
-          where
-            -- Really, using length-squared. don't have to abs it, don't have to sqrt it.
-            abLength = (vertex2-vertex1) `dot` (vertex2-vertex1)
-            bcLength = (vertex3-vertex2) `dot` (vertex3-vertex2)
-            caLength = (vertex1-vertex3) `dot` (vertex1-vertex3)
-    -- Force closestPointToTriangle to work at the origin
-    closestPointToTriangleCentered :: Triangle -> (ClosestFeature, ℝ3)
-    closestPointToTriangleCentered (ver1, ver2, ver3) = (resFeature, originDistance + res)
+        -- Really, using length-squared. don't have to abs it, don't have to sqrt it.
+        abLength = (vertex2-vertex1) `dot` (vertex2-vertex1)
+        bcLength = (vertex3-vertex2) `dot` (vertex3-vertex2)
+        caLength = (vertex1-vertex3) `dot` (vertex1-vertex3)
+    -- Second math precision transform: Force closestFeatureToTriangle to work near the origin by translating our query, and then translating the response.
+    closestFeatureToTriangleCentered :: Triangle -> ℝ3 -> (ClosestFeature, ℝ3)
+    closestFeatureToTriangleCentered (ver1, ver2, ver3) inpoint = (resFeature, originDistance + res)
       where
-        (resFeature, res) = closestPointToTriangle adjustedTriangle adjustedPoint
+        (resFeature, res) = closestFeatureToTriangle adjustedTriangle adjustedPoint
         originDistance = 1/3 *^ (ver1 + ver2 + ver3)
         adjustedTriangle = (ver1 - originDistance, ver2 - originDistance, ver3 - originDistance)
-        adjustedPoint = point - originDistance
+        adjustedPoint = inpoint - originDistance
 
-closestPointToTriangle :: Triangle -> ℝ3 -> (ClosestFeature, ℝ3)
-closestPointToTriangle (v1, v2, v3) p
+-- | Find the closest part of a triangle (edge, center, vertex) to a given point , along with the point on the closest part that is closest to the given point.
+closestFeatureToTriangle :: Triangle -> ℝ3 -> (ClosestFeature, ℝ3)
+closestFeatureToTriangle (v1, v2, v3) p
   -- Closest to the vertices
   | d1 <= 0 && d2 <=  0 = (FeatVertex1, v1)
   | d3 >= 0 && d4 <= d3 = (FeatVertex2, v2)
