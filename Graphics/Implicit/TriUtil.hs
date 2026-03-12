@@ -45,7 +45,7 @@ type Triangle = (ℝ3, ℝ3, ℝ3)
 data ClosestFeature = FeatVertex1 | FeatVertex2 | FeatVertex3 | FeatEdge12 | FeatEdge13 | FeatEdge23 | FeatFace
   deriving Eq
 
--- FIXME: make these indices correct by construction?
+-- FIXME: Make these indices correct by construction?
 findTriangle :: [ℝ3] -> Tri -> Triangle
 findTriangle vertices (i1,i2,i3)
   | outOfRange i1 = error $ "bad vertex index(out of range): " <> show i1 <> "\n"
@@ -107,12 +107,12 @@ distancePointToTriangle point (vertex1, vertex2, vertex3) = (adjustedFeature, di
         caLength = (vertex1-vertex3) `dot` (vertex1-vertex3)
     -- Second math precision transform: Force closestFeatureToTriangle to work near the origin by translating our query, and then translating the response.
     closestFeatureToTriangleCentered :: Triangle -> ℝ3 -> (ClosestFeature, ℝ3)
-    closestFeatureToTriangleCentered (ver1, ver2, ver3) inpoint = (resFeature, originDistance + res)
+    closestFeatureToTriangleCentered (ver1, ver2, ver3) inpoint = (feature, originDistance + res)
       where
-        (resFeature, res) = closestFeatureToTriangle adjustedTriangle adjustedPoint
+        (feature, res) = closestFeatureToTriangle translatedTriangle translatedPoint
+        translatedTriangle = (ver1 - originDistance, ver2 - originDistance, ver3 - originDistance)
+        translatedPoint = inpoint - originDistance
         originDistance = 1/3 *^ (ver1 + ver2 + ver3)
-        adjustedTriangle = (ver1 - originDistance, ver2 - originDistance, ver3 - originDistance)
-        adjustedPoint = inpoint - originDistance
 
 -- | Find the closest part of a triangle (edge, center, vertex) to a given point , along with the point on the closest part that is closest to the given point.
 closestFeatureToTriangle :: Triangle -> ℝ3 -> (ClosestFeature, ℝ3)
