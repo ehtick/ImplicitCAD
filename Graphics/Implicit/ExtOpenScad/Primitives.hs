@@ -15,7 +15,7 @@
 -- Export one set containing all of the primitive modules.
 module Graphics.Implicit.ExtOpenScad.Primitives (primitiveModules) where
 
-import Prelude(any, concat, elem, foldr, head, mapM, (.), Either(Left, Right), Bool(True, False), Maybe(Just, Nothing), ($), pure, show, either, id, (-), (==), (&&), (<), (*), cos, sin, pi, (/), (>), const, uncurry, (/=), (||), not, null, fmap, (<>), otherwise, error, (<*>), (<$>))
+import Prelude(any, concat, elem, error, foldr, head, mapM, (.), Either(Left, Right), Bool(True, False), Maybe(Just, Nothing), ($), pure, show, either, id, (-), (==), (&&), (<), (*), cos, sin, pi, (/), (>), const, uncurry, (/=), (||), not, null, fmap, (<>), otherwise, (<*>), (<$>))
 
 import Graphics.Implicit.Definitions (ℝ, ℝ2, ℝ3, ℕ, SymbolicObj2, SymbolicObj3, ExtrudeMScale(C1), fromℕtoℝ, isScaleID)
 
@@ -42,13 +42,13 @@ import Data.Foldable (toList)
 
 import Data.List (genericIndex)
 
+import Data.Maybe (fromMaybe, isJust)
+
 import Data.Sequence (Seq, deleteAt, filter, fromList)
 import qualified Data.Sequence as DS (null)
 
 import Data.Text.Lazy (Text)
 import qualified Data.Text.Lazy as DTL (pack)
-
-import Data.Maybe (isJust)
 
 import Control.Lens ((^.))
 
@@ -57,6 +57,8 @@ import Linear (_m33, cross, dot, M34, M44, V2(V2), V3(V3), V4(V4))
 import Linear.Affine (qdA)
 
 default (ℝ)
+
+-- FIXME: `defaultTo` is used inconsistently. The line between defaults and examples is a bit blurry.
 
 -- | Use the old syntax when defining arguments.
 argument :: OTypeMirror desiredType => Text -> ArgParser desiredType
@@ -292,10 +294,10 @@ cylinder = moduleWithoutSuite "cylinder" $ \_ -> do
 
 polyhedron :: (Symbol, SourcePosition -> ArgParser (StateC [OVal]))
 polyhedron = moduleWithoutSuite "polyhedron" $ \sourcePos -> do
-    example "polyhedron(points=[[0,0,0], [2,0,0], [2,2,0], [0,2,0], [1, 1, 2]], faces=[[0,1,2,3], [0,5,1], [1,5,2], [2,5,3], [3,5,4], [4,5,0]]);"
+    example "polyhedron(points=[[0,0,0], [2,0,0], [2,2,0], [0,2,0], [1, 1, 2]], faces=[[0,1,2,3], [0,4,1], [1,4,2], [2,4,3], [3,4,0]]);"
     -- arguments
-    points :: [ℝ3] <- argument "points" `defaultTo` [] `doc` "list of points to construct faces from"
-    faces :: [[ℕ]] <- argument "faces" `defaultTo` [] `doc` "list of sets of indices into points, used to create faces on the polyhedron."
+    points :: [ℝ3] <- argument "points" `doc` "list of points to construct faces from"
+    faces :: [[ℕ]] <- argument "faces" `doc` "list of sets of indices into points, used to create faces on the polyhedron."
     pure $ do
       -- A tri is constructed of three indexes into the points.
       tris <- fmap concat $ mapM (trianglesFromFace sourcePos) faces
@@ -305,13 +307,13 @@ polyhedron = moduleWithoutSuite "polyhedron" $ \sourcePos -> do
         -- decompose our faces into tris.
         trianglesFromFace :: SourcePosition -> [ℕ] -> StateC [Tri]
         trianglesFromFace sourcePos []         = do
-                                                 errorC sourcePos "no point found when trying to generate triangles from a face.\n"
+                                                 warnC sourcePos "no point found when trying to generate triangles from a face.\n"
                                                  pure []
         trianglesFromFace sourcePos [p1]       = do
-                                                 warnC sourcePos $ "only one point found: " <> (DTL.pack $ show p1) <> "\n"
+                                                 errorC sourcePos $ "only one point found: " <> (DTL.pack $ show p1) <> "\n"
                                                  pure []
         trianglesFromFace sourcePos [p1,p2]    = do
-                                                 warnC sourcePos $ "only two points found: " <> (DTL.pack $ show p1) <> "\n" <> (DTL.pack $ show p2) <> "\n"
+                                                 errorC sourcePos $ "only two points found: " <> (DTL.pack $ show p1) <> "\n" <> (DTL.pack $ show p2) <> "\n"
                                                  pure []
         trianglesFromFace _         [p1,p2,p3] = pure [(p1,p2,p3)]
         trianglesFromFace sourcePos (p1:p2:p3:xs) = ((p1,p2,p3):) <$> trianglesFromFace sourcePos (p1:p3:xs)
@@ -357,7 +359,7 @@ polyhedron = moduleWithoutSuite "polyhedron" $ \sourcePos -> do
                   pure (found <> [triFound], filter (/= triUnderTest) remaining)
                 Nothing ->       pure (found, remaining)
               where
-                res = foldr (\tri state -> firstNeighborFilter tri triUnderTest state) Nothing visited 
+                res = foldr (\tri state -> firstNeighborFilter tri triUnderTest state) Nothing visited
                 -- | A short-circuiting filter we fold over visited, and grab the first neighboring tri.
                 firstNeighborFilter :: Tri -> Tri -> Maybe Tri -> Maybe Tri
                 firstNeighborFilter src testTri maybeRes
@@ -537,14 +539,13 @@ difference = moduleWithSuite "difference" $ \sourcePos children -> do
                     then objReduce (unsafeUncurry (Prim.differenceR r)) (unsafeUncurry (Prim.differenceR r)) children
                     else objReduce (unsafeUncurry  Prim.difference)     (unsafeUncurry  Prim.difference)     children
         where
-          unsafeUncurry :: (a -> [a] -> c) -> [a] -> c
-          unsafeUncurry f = uncurry f . unsafeUncons
-
-          unsafeUncons :: [a] -> (a, [a])
-          unsafeUncons (a : as) = (a, as)
+          unsafeUncons :: [a] -> Maybe (a, [a])
+          unsafeUncons (a : as) = Just (a, as)
           -- NOTE: This error is guarded against during the @null children@ check in the function body.
-          unsafeUncons _ = error "difference requires at least one element; zero given"
-
+          unsafeUncons _ = Nothing
+          -- This error should not be reachable.
+          unsafeUncurry :: (a -> [a] -> c) -> [a] -> c
+          unsafeUncurry f = uncurry f . fromMaybe (error "Impossible error: difference requires at least one element; zero given") .  unsafeUncons
 translate :: (Symbol, SourcePosition -> [OVal] -> ArgParser (StateC [OVal]))
 translate = moduleWithSuite "translate" $ \_ children -> do
     example "translate ([2,3]) circle (4);"

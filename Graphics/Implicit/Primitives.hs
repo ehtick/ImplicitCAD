@@ -138,7 +138,7 @@ polyhedron
     :: [ℝ3]           -- ^ Points
     -> [(ℕ,ℕ,ℕ)]      -- ^ triangles, resolved through indexing Points
     -> SymbolicObj3   -- ^ Resulting polyhedron
-polyhedron points tris = Polyhedron points tris
+polyhedron = Polyhedron
 
 -- | A conical frustum --- ie. a cylinder with different radii at either end.
 cylinder2

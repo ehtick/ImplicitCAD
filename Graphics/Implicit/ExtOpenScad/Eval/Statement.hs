@@ -116,21 +116,20 @@ runStatementI (StatementI sourcePos (ModuleCall (Symbol name) argsExpr suite)) =
               fromMaybe (pure []) (fst argsMapped)
             Just (ONModule _ implementation forms) -> do
               possibleInstances <- selectInstances forms
-              let
               when (null possibleInstances) (do
                                                 errorC sourcePos $ "no instance of " <> name <> " found to match given parameters.\nInstances available:\n" <> pack (show (ONModule (Symbol name) implementation forms))
                                                 traverse_ ((`checkOptions` True) . Just) forms
                                             )
               -- Evaluate all of the arguments.
               evaluatedArgs <- evalArgs argsExpr
+              when (suite /= []) (errorC sourcePos $ "Suite provided, but module " <> name <> " does not accept one. Perhaps a missing semicolon?")
               -- Run the module.
               let
                 argsMapped = argMap evaluatedArgs $ implementation sourcePos
               for_ (pack <$> snd argsMapped) $ errorC sourcePos
-              fromMaybe (pure []) (fst argsMapped)
+              fromMaybe (pure []) $ fst argsMapped
             Just (ONModuleWithSuite _ implementation forms) -> do
               possibleInstances <- selectInstances forms
-              let
               when (null possibleInstances) $ do
                                               errorC sourcePos $ "no instance of " <> name <> " found to match given parameters.\nInstances available:\n" <> pack (show (ONModuleWithSuite (Symbol name) implementation forms))
                                               traverse_ ((`checkOptions` True) . Just) forms

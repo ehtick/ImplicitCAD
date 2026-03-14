@@ -103,7 +103,7 @@ getImplicit3 _ (Polyhedron points tris) = \(point) ->
         eps :: ℝ
         eps = 1e-13
         triSeq = fromList tris
-        -- For each edge, the tri indexes that share that edge: 
+        -- For each edge, the tri indexes that share that edge:
         triByEdge :: Map (ℕ,ℕ) [Int]
         triByEdge = fromListWith (++) edgeTris
           where
@@ -111,7 +111,7 @@ getImplicit3 _ (Polyhedron points tris) = \(point) ->
             edgesOfTri :: (Int,Tri) -> [((ℕ,ℕ),[Int])]
             edgesOfTri (i,(p1,p2,p3)) = [(sortEdge p1 p2,[i]),(sortEdge p2 p3,[i]),(sortEdge p3 p1,[i])]
         sortEdge a b = (min a b, max a b)
-        -- For each vertex, the tri indexes that contain that vertex: 
+        -- For each vertex, the tri indexes that contain that vertex:
         triByVertex :: Map ℕ [Int]
         triByVertex = fromListWith (++) vertexTris
           where
@@ -123,8 +123,8 @@ getImplicit3 _ (Polyhedron points tris) = \(point) ->
         weighedNormish :: Tri -> ClosestFeature -> ℝ3
         weighedNormish (p1,p2,p3) closest
           | closest == FeatFace = normOfTriangle closestTriangle
-          | closest == FeatEdge12 = averageNorm $ fromMaybe [] $ lookup (sortEdge p1 p2) triByEdge 
-          | closest == FeatEdge13 = averageNorm $ fromMaybe [] $ lookup (sortEdge p1 p3) triByEdge 
+          | closest == FeatEdge12 = averageNorm $ fromMaybe [] $ lookup (sortEdge p1 p2) triByEdge
+          | closest == FeatEdge13 = averageNorm $ fromMaybe [] $ lookup (sortEdge p1 p3) triByEdge
           | closest == FeatEdge23 = averageNorm $ fromMaybe [] $ lookup (sortEdge p2 p3) triByEdge
           | closest == FeatVertex1 = Linear.normalize $ sum $ angleWeighed (genericIndex points p1) <$> fromMaybe [] (lookup p1 triByVertex)
           | closest == FeatVertex2 = Linear.normalize $ sum $ angleWeighed (genericIndex points p2) <$> fromMaybe [] (lookup p2 triByVertex)
