@@ -335,7 +335,7 @@ polyhedron = moduleWithoutSuite "polyhedron" $ \sourcePos -> do
                 triCentroid = centroid [v1,v2,v3]
             polyCentroid = centroid points
             flipTri (p1,p2,p3) = (p1,p3,p2)
-            -- | Wind the triangles.
+            -- | Wind the triangles. For two triangles sharing an edge, said edge MUST be expressed by the two triangles in the opposite order.
             windTriangles :: [Tri] -> Seq Tri -> StateC [Tri]
             windTriangles visited unvisited
               -- We're done.

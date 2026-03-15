@@ -96,28 +96,31 @@ getImplicit3 _ (Polyhedron points tris) = \(point) ->
     unsignedDistanceAndTriangleClosestTo point = minimumBy (\((_,a),_) ((_,b),_) -> a `compare` b) $ featDistTriangles point
     featDistTriangles point = (\a -> (distancePointToTriangle point (findTriangle points a), a)) <$> tris
     firstPointOfTri (v1,_,_) = v1
+    -- For each edge, the tri indexes that share that edge:
+    triByEdge :: Map (ℕ,ℕ) [Int]
+    triByEdge = fromListWith (++) edgeTris
+      where
+        edgeTris = concatMap edgesOfTri $ toList $ mapWithIndex (,) triSeq
+        edgesOfTri :: (Int,Tri) -> [((ℕ,ℕ),[Int])]
+        edgesOfTri (i,(p1,p2,p3)) = [(sortEdge p1 p2,[i]),(sortEdge p2 p3,[i]),(sortEdge p3 p1,[i])]
+    -- For each vertex, the tri indexes that contain that vertex:
+    triByVertex :: Map ℕ [Int]
+    triByVertex = fromListWith (++) vertexTris
+      where
+        vertexTris = concatMap vertexesOfTri $ toList $ mapWithIndex (,) triSeq
+        vertexesOfTri :: (Int,Tri) -> [(ℕ,[Int])]
+        vertexesOfTri (i,(p1,p2,p3)) = [(p1,[i]),(p2,[i]),(p3,[i])]
+    -- Sequence our Tris.
+    triSeq = fromList tris
+    -- Decompose our tris into triangles.
+    triangles = findTriangle points <$> tris
+    sortEdge a b = (min a b, max a b)
     pointOnOutside :: ℝ3 -> Triangle -> Tri -> ClosestFeature -> Bool
     pointOnOutside point closestTriangle closestTri feature = (point - firstPointOfTri closestTriangle) `dot` (weighedNormish closestTri feature) >= -eps
       where
         -- fudge factor.
         eps :: ℝ
         eps = 1e-13
-        triSeq = fromList tris
-        -- For each edge, the tri indexes that share that edge:
-        triByEdge :: Map (ℕ,ℕ) [Int]
-        triByEdge = fromListWith (++) edgeTris
-          where
-            edgeTris = concatMap edgesOfTri $ toList $ mapWithIndex (,) triSeq
-            edgesOfTri :: (Int,Tri) -> [((ℕ,ℕ),[Int])]
-            edgesOfTri (i,(p1,p2,p3)) = [(sortEdge p1 p2,[i]),(sortEdge p2 p3,[i]),(sortEdge p3 p1,[i])]
-        sortEdge a b = (min a b, max a b)
-        -- For each vertex, the tri indexes that contain that vertex:
-        triByVertex :: Map ℕ [Int]
-        triByVertex = fromListWith (++) vertexTris
-          where
-            vertexTris = concatMap vertexesOfTri $ toList $ mapWithIndex (,) triSeq
-            vertexesOfTri :: (Int,Tri) -> [(ℕ,[Int])]
-            vertexesOfTri (i,(p1,p2,p3)) = [(p1,[i]),(p2,[i]),(p3,[i])]  
         -- Get the normalized average of a set of triangles, referred to by index.
         averageNorm triIndexes = Linear.normalize $ sum $ normOfTriangle . genericIndex triangles <$> triIndexes
         weighedNormish :: Tri -> ClosestFeature -> ℝ3
@@ -133,9 +136,7 @@ getImplicit3 _ (Polyhedron points tris) = \(point) ->
         angleWeighed :: ℝ3 -> Int -> ℝ3
         angleWeighed vertex triNo = angleAt vertex triangle *^ normOfTriangle triangle
           where
-            triangle = findTriangle points $ genericIndex tris triNo
-        -- decompose our tris into triangles.
-        triangles = findTriangle points <$> tris
+            triangle = genericIndex triangles triNo
 getImplicit3 _ (BoxFrame b e) = \p' ->
     let p@(V3 px py pz) = abs p' - b
         V3 qx qy qz = abs (p + pure e) - pure e
