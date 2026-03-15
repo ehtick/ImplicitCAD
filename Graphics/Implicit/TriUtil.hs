@@ -12,6 +12,7 @@ module Graphics.Implicit.TriUtil (
   distancePointToTriangle,
   findTriangle,
   normOfTriangle,
+  pointOnOutsideByWinding,
   ClosestFeature(FeatFace,
                  FeatVertex1, FeatVertex2, FeatVertex3,
                  FeatEdge12,  FeatEdge13,  FeatEdge23),
@@ -19,7 +20,7 @@ module Graphics.Implicit.TriUtil (
   Triangle
   ) where
 
-import Prelude (acos, error, length, max, min, otherwise, show, (>), (<), (&&), (<=), (>=),($), (.), (/), (+), (-), (*), (==), (||), (<>), Bool, Eq)
+import Prelude (abs, acos, atan2, error, length, max, min, otherwise, pi, show, sum, (<$>), (>), (<), (&&), (<=), (>=),($), (.), (/), (+), (-), (*), (==), (||), (<>), Bool, Eq)
 
 import Graphics.Implicit.Definitions (
   fromℕ,
@@ -29,7 +30,7 @@ import Graphics.Implicit.Definitions (
 
 import Data.List (genericIndex)
 
-import Linear (dot, distance)
+import Linear (dot, distance, norm)
 import qualified Linear (normalize)
 
 -- The cross product.
@@ -63,6 +64,36 @@ findTriangle vertices (i1,i2,i3)
 -- | Find the normal of a given Triangle
 normOfTriangle :: Triangle -> ℝ3
 normOfTriangle (v1,v2,v3) = Linear.normalize $ (v2-v1) `cross` (v3-v1)
+
+-- | Determine if the point is on the outside of the object.
+-- Note: We cannot terminate early.. because all of the triangles must be counted.
+pointOnOutsideByWinding :: ℝ3 -> [Triangle] -> Bool
+pointOnOutsideByWinding point triangles = abs res < pi
+  where
+    res = sum $ halfSolidAngleOfTriangle point <$> triangles
+
+-- Find half of the signed solid angle of a given Triangle as seen from point.
+-- A solid angle measures how much of the field of view this triangle covers. think: arcs in astronomy.
+halfSolidAngleOfTriangle :: ℝ3 -> Triangle -> ℝ
+halfSolidAngleOfTriangle point (v1,v2,v3)
+  | normv1p <= eps || normv2p <= eps || normv3p <= eps = 0
+  | otherwise                                          = atan2 numerator denominator
+    where
+      eps :: ℝ
+      eps = 1e-14
+      v1p = v1 - point
+      v2p = v2 - point
+      v3p = v3 - point
+      -- length of v1p, v2p, v3p
+      normv1p = norm v1p
+      normv2p = norm v2p
+      normv3p = norm v3p
+      -- The Van Oosterom-Strackee Algorithm.
+      numerator = v1p `dot` (v2p `cross` v3p)
+      denominator = normv1p * normv2p * normv3p
+                  + (v1p `dot` v2p) * normv3p
+                  + (v2p `dot` v3p) * normv1p
+                  + (v3p `dot` v1p) * normv2p
 
 -- find the angle of the corner of the triangle containing a given vertex.
 angleAt :: ℝ3 -> Triangle -> ℝ
