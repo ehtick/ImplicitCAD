@@ -48,7 +48,7 @@ data ClosestFeature = FeatVertex1 | FeatVertex2 | FeatVertex3 | FeatEdge12 | Fea
   deriving Eq
 
 -- FIXME: Make these indices correct by construction?
--- | Reconstitune a Triangle from a Tri, and our points array.
+-- | Reconstitute a Triangle from a Tri, and our points array.
 findTriangle :: [ℝ3] -> Tri -> Triangle
 findTriangle vertices (i1,i2,i3)
   | outOfRange i1 = error $ "bad vertex index(out of range): " <> show i1 <> "\n"

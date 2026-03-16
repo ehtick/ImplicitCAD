@@ -72,8 +72,8 @@ getImplicit3 _ (Cylinder h r1 r2) = \(V3 x y z) ->
     in
         max (d * cos θ) (abs (z-h/2) - (h/2))
 -- FIXME: Make Polyhedron correct by construction.
-getImplicit3 _ (Polyhedron [] _) = error "Asked to find distance to an empty polygon. No points."
-getImplicit3 _ (Polyhedron _ []) = error "Asked to find distance to an empty polygon. No tris."
+getImplicit3 _ (Polyhedron [] _) = error "Asked to find distance to an empty polyhedron. No points given."
+getImplicit3 _ (Polyhedron _ []) = error "Asked to find distance to an empty polyhedron. No faces given."
 getImplicit3 _ (Polyhedron points tris) = \(point) ->
   let
     ((_,res), _) = unsignedDistanceAndTriangleClosestTo point

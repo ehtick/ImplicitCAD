@@ -332,7 +332,7 @@ data SymbolicObj3 =
       Cube ℝ3 -- rounding, size.
     | Sphere ℝ -- radius
     | Cylinder ℝ ℝ ℝ --
-    | Polyhedron [ℝ3] [(ℕ,ℕ,ℕ)] -- virtexes, triangles-by-index
+    | Polyhedron [ℝ3] [(ℕ,ℕ,ℕ)] -- vertexes, triangles-by-index
     -- Simple transforms
     | Rotate3 (Quaternion ℝ) SymbolicObj3
     | Transform3 (M44 ℝ) SymbolicObj3
