@@ -154,7 +154,7 @@ getArgParserDocs (APExample str child) = do
 -- We try to look at as little as possible, to avoid the risk of triggering an error.
 -- Yay laziness!
 
-getArgParserDocs (APTest _ _ child) = getArgParserDocs child
+getArgParserDocs (APTest _ _ _ child) = getArgParserDocs child
 
 -- To look at these would almost certainly be death (exception)
 getArgParserDocs (APTerminator _) = return [Empty]

@@ -121,8 +121,8 @@ data ArgParser a
                  -- ^ For failure: @APFail (error message)@
                  | APExample Text (ArgParser a)
                  -- ^ An example, then next
-                 | APTest Text [TestInvariant] (ArgParser a)
-                 -- ^ A string to run as a test, then invariants for the results, then next
+                 | APTest Text (Maybe ℝ) [TestInvariant] (ArgParser a)
+                 -- ^ A string to run as a test, the resolution to render the results, the invariants for the results, then next
                  | APBranch [ArgParser a]
                  -- ^ A branch where there are a number of possibilities for the parser underneath
   deriving Functor
@@ -139,7 +139,7 @@ instance Monad ArgParser where
     (APFail errmsg) >>= _ = APFail errmsg
     -- These next two are easy, they just pass the work along to their child
     (APExample str child) >>= g = APExample str (child >>= g)
-    (APTest str tests child) >>= g = APTest str tests (child >>= g)
+    (APTest str maybeRes tests child) >>= g = APTest str maybeRes tests (child >>= g)
     -- And an ArgParserTerminator happily gives away the value it contains
     (APTerminator a) >>= g = g a
     (APBranch bs) >>= g = APBranch $ (>>= g) <$> bs
@@ -294,5 +294,6 @@ varUnion (VarLookup a) (VarLookup b) = VarLookup $ union a b
 lookupVarIn :: Text -> VarLookup -> Maybe OVal
 lookupVarIn target (VarLookup vars) = lookup (Symbol target) vars
 
+-- | Our tests. We only have the one, and it is to check the Euler characteristic of a mesh.
 newtype TestInvariant = EulerCharacteristic ℕ
     deriving (Show)

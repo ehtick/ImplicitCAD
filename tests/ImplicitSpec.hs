@@ -7,11 +7,14 @@
 
 module ImplicitSpec (spec) where
 
-import Prelude (Fractional, flip, fmap, pure, negate, (+),  Show, Monoid, mempty, (*), (/), (<>), (-), (/=), ($), (.), pi, id)
-import Test.Hspec (describe, parallel, Spec)
+import Prelude (Fractional, concatMap, error, flip, fmap, fromIntegral, length, negate, pure, Bool(False, True), (+), (<), Show, Monoid, mempty, (*), (/), (<>), (-), (/=), ($), (.), pi, id, Int, IO)
+
+import Test.Hspec (describe, it, parallel, shouldBe, Spec)
+
 import Graphics.Implicit
     ( difference,
       rotate,
+      runOpenscad,
       transform,
       rotate3,
       rotate3V,
@@ -31,13 +34,37 @@ import Graphics.Implicit
       extrude,
       cylinder2,
       mirror,
-      Object )
+      Object,
+      ℝ,
+      ℝ3)
+
 import Graphics.Implicit.Primitives (rotateQ)
+
+import Graphics.Implicit.Export.DiscreteAproxable (discreteAprox)
+
+import Graphics.Implicit.ExtOpenScad.Util.ArgParser (collectTests)
+
+import Graphics.Implicit.Definitions (TriangleMesh, Triangle(Triangle), getTriangles)
+
+import Graphics.Implicit.ExtOpenScad.Definitions(ScadOpts(ScadOpts), SourcePosition(SourcePosition), OVal(ONModule), TestInvariant(EulerCharacteristic))
+
+import Graphics.Implicit.ExtOpenScad.Primitives(primitiveModules)
+
 import Test.QuickCheck (Arbitrary(arbitrary), suchThat, forAll, NonZero)
-import Data.Foldable ( for_ )
+
+import Data.Foldable (for_, mapM_)
+
+import Data.List (nub)
+
+import Data.Maybe (fromMaybe, Maybe(Nothing))
+
+import Data.Text.Lazy (Text, unpack)
+
 import Test.Hspec.QuickCheck (prop)
+
 import Linear (V2(V2), V3(V3), V4(V4), (^*))
 import qualified Linear
+
 import Graphics.Implicit.Test.Instances (Observe, (=~=), arbitraryNonZeroV)
 
 ------------------------------------------------------------------------------
@@ -66,6 +93,8 @@ spec = parallel $ do
     rotation3dSpec
     transform3dSpec
     misc3dSpec
+
+  describe "inline primitiveModule tests" primitiveModulesSpec
 
 ------------------------------------------------------------------------------
 -- All the constraints we need in scope to parameterize tests by both 2d and
@@ -340,3 +369,56 @@ homomorphismSpec = describe "homomorphism" $ do
   prop "withRounding/intersectR" $ \r_obj r_combo ->
     withRounding @obj r_obj . intersectR r_combo
       =~= intersectR r_combo . fmap (withRounding r_obj)
+
+--------------------------------------------------------------------
+-- | The tests given in the ArgParser implementations of
+--   primitiveModules.
+primitiveModulesSpec :: Spec
+primitiveModulesSpec = mapM_ runTest inlineTests
+  where
+    runTest (scad, maybeRes, invariants) = it (unpack scad) $ runInlineTest scad maybeRes invariants
+    inlineTests :: [(Text, Maybe ℝ, [TestInvariant])]
+    inlineTests = concatMap testsOfModule primitiveModules
+      where
+        dummyPos :: SourcePosition
+        dummyPos = SourcePosition 0 0 "/dev/null"
+        testsOfModule (_, ONModule _ implementation _) = collectTests $ implementation dummyPos []
+        testsOfModule _ = []
+
+-- FIXME: This should not be in IO () for reasons of ImplicitCAD.
+-- FIXME: tests should say whether they are scad, or escad.
+-- | Run one of the tests from Graphics/Implicit/ExtOpenScad/Primitives.hs
+runInlineTest :: Text -> Maybe ℝ -> [TestInvariant] -> IO ()
+runInlineTest scad maybeRes invariants = do
+  (_, _, obj3s, _) <- runOpenscad defaultScadOpts [] Nothing unpackedScad
+  let foundObj = case obj3s of
+        [] -> error $ "SCAD code produced no 3D geometry: " <> unpackedScad
+        [obj] -> obj
+        objs -> union objs
+  mapM_ (checkInvariant maybeRes foundObj) invariants
+  where
+    unpackedScad = unpack scad
+
+checkInvariant :: Maybe ℝ -> SymbolicObj3 -> TestInvariant -> IO ()
+checkInvariant maybeRes obj (EulerCharacteristic expected) =
+  eulerCharacteristicOf (getTriangles (discreteAprox res obj :: TriangleMesh)) `shouldBe` fromIntegral expected
+  where
+    res = fromMaybe 1 maybeRes
+defaultScadOpts :: ScadOpts
+defaultScadOpts = ScadOpts compat_flag import_flag
+  where
+    compat_flag = True -- Try to be extra compatible with openscad.
+    import_flag = False -- Do not honor include or use statements.
+
+-- | Find the Euler Characteristic of a mesh. This is a topology property test.
+eulerCharacteristicOf :: [Triangle] -> Int
+eulerCharacteristicOf triangles = v - e + f
+  where
+    f = length triangles
+    e = length $ nub $ concatMap edges triangles
+    v = length $ nub $ concatMap vertices triangles
+    edges :: Triangle -> [(ℝ3,ℝ3)]
+    edges (Triangle (v1,v2,v3)) = [sortEdge v1 v2, sortEdge v2 v3, sortEdge v3 v1]
+    vertices :: Triangle -> [ℝ3]
+    vertices (Triangle (v1,v2,v3)) = [v1,v2,v3]
+    sortEdge v1 v2 = if v1 < v2 then (v1,v2) else (v2,v1)

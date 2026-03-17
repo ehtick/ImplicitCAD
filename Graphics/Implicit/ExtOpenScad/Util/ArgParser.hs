@@ -8,17 +8,27 @@
 -- Allow us to use string literals for Text
 {-# LANGUAGE OverloadedStrings #-}
 
-module Graphics.Implicit.ExtOpenScad.Util.ArgParser (argument, doc, defaultTo, example, test, eulerCharacteristic, argMap) where
+module Graphics.Implicit.ExtOpenScad.Util.ArgParser (
+  argMap,
+  argument,
+  atResolution,
+  collectTests,
+  doc,
+  defaultTo,
+  eulerCharacteristic,
+  example,
+  test
+  ) where
 
 -- imported twice, once qualified. null from Data.Map conflicts with null from Prelude.
-import Prelude(String, Maybe(Just, Nothing), ($), (<>), show, return, fmap, snd, filter, (.), fst, foldl1, not, (&&), (<$>), maybe)
+import Prelude(String, Maybe(Just, Nothing), ($), (<>), concatMap, error, otherwise, show, return, fmap, snd, filter, (.), fst, foldl1, not, (&&), (<$>), maybe)
 import qualified Prelude as P (null)
 
 import Graphics.Implicit.ExtOpenScad.Definitions (ArgParser(AP, APTest, APBranch, APTerminator, APFail, APExample), OVal (OError), TestInvariant(EulerCharacteristic), Symbol, VarLookup(VarLookup))
 
 import Graphics.Implicit.ExtOpenScad.Util.OVal (fromOObj, toOObj, OTypeMirror)
 
-import Graphics.Implicit.Definitions(ℕ)
+import Graphics.Implicit.Definitions(ℕ, ℝ)
 
 -- imported twice, once qualified. null from Data.Map conflicts with null from Prelude.
 import Data.Map (fromList, lookup, delete)
@@ -65,16 +75,31 @@ defaultTo _ _ = APFail "Impossible! defaultTo"
 example :: Text -> ArgParser ()
 example str = APExample str (return ())
 
--- | Inline test and combinators.
+-- | Start an inline test.
 test :: Text -> ArgParser ()
-test str = APTest str [] (return ())
+test str = APTest str Nothing [] (return ())
 
+-- | Set the resolution for an inline test.
+atResolution :: ArgParser a -> ℝ -> ArgParser a
+atResolution (APTest str maybeRes tests child) res
+  | isJust maybeRes = error "tried to set a resolution of a test twice."
+  | otherwise = APTest str (Just res) tests child
+atResolution _ _ = APFail "Impossible! atResolution"
+
+-- | Give a euler characteristic that must be true for the given APTest.
 eulerCharacteristic :: ArgParser a -> ℕ -> ArgParser a
-eulerCharacteristic (APTest str tests child) χ =
-    APTest str (EulerCharacteristic χ : tests) child
+eulerCharacteristic (APTest str maybeRes tests child) χ =
+    APTest str maybeRes (EulerCharacteristic χ : tests) child
 eulerCharacteristic _ _ = APFail "Impossible! eulerCharacteristic"
 
 -- * Tools for handeling ArgParsers
+
+-- | Retrieve all of the tests
+collectTests :: ArgParser a -> [(Text, Maybe ℝ, [TestInvariant])]
+collectTests (APTest str maybeRes tests child) = (str, maybeRes, tests) : collectTests child
+collectTests (APExample _ child)               = collectTests child
+collectTests (APBranch branches)               = concatMap collectTests branches
+collectTests _                                 = []
 
 -- | Apply arguments to an ArgParser
 argMap ::
@@ -118,4 +143,4 @@ argMap2 _ _ (APFail err) = (Nothing, [unpack err])
 
 argMap2 a b (APExample _ child) = argMap2 a b child
 
-argMap2 a b (APTest _ _ child) = argMap2 a b child
+argMap2 a b (APTest _ _ _ child) = argMap2 a b child
