@@ -84,7 +84,7 @@ getImplicit3 _ (Polyhedron points tris) = \(point) ->
     else negate $ res
   where
     unsignedDistanceAndTriangleClosestTo point = minimumBy (\((_,a),_) ((_,b),_) -> a `compare` b) $ featDistTriangles point
-    featDistTriangles point = (\a -> (distancePointToTriangle point (findTriangle points a), a)) <$> tris
+    featDistTriangles point = (\triangle -> (distancePointToTriangle point triangle, triangle)) <$> triangles
     -- Decompose our tris into triangles.
     triangles = findTriangle points <$> tris
 getImplicit3 _ (BoxFrame b e) = \p' ->
