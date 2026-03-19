@@ -147,6 +147,8 @@ Library
                     -- Exposed for executables
                     Graphics.Implicit.Export.OutputFormat
                     Graphics.Implicit.Export.Resolution
+                    -- Exposed for in-argparser tests.
+                    Graphics.Implicit.ExtOpenScad.Util.ArgParser
     Other-modules:
                   Graphics.Implicit.FastIntUtil
                   Graphics.Implicit.TriUtil
@@ -162,7 +164,6 @@ Library
                   Graphics.Implicit.ExtOpenScad.Parser.Util
                   Graphics.Implicit.ExtOpenScad.Eval.Statement
                   Graphics.Implicit.ExtOpenScad.Eval.Expr
-                  Graphics.Implicit.ExtOpenScad.Util.ArgParser
                   Graphics.Implicit.ExtOpenScad.Util.OVal
                   Graphics.Implicit.ExtOpenScad.Util.StateC
                   Graphics.Implicit.Export.RayTrace
