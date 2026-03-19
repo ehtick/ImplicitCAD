@@ -20,7 +20,7 @@ module Graphics.Implicit.TriUtil (
   Triangle
   ) where
 
-import Prelude (abs, acos, atan2, error, length, max, min, otherwise, pi, show, sum, (<$>), (>), (<), (&&), (<=), (>=),($), (.), (/), (+), (-), (*), (==), (||), (<>), Bool, Eq)
+import Prelude (abs, acos, atan2, error, length, max, min, otherwise, pi, show, sum, toInteger, (<$>), (>), (<), (&&), (<=), (>=),($), (.), (/), (+), (-), (*), (==), (||), (<>), Bool, Eq)
 
 import Graphics.Implicit.Definitions (
   fromℕ,
@@ -59,7 +59,7 @@ findTriangle vertices (i1,i2,i3)
   where
     -- FIXME: >=BASE-4.21: replace this with compareLength once debian stable ships 4.21.
     outOfRange :: ℕ -> Bool
-    outOfRange v = v < 0 || length vertices <= fromℕ v
+    outOfRange v = v < 0 || toInteger (length vertices) <= fromℕ v
 
 -- | Find the normal of a given Triangle
 normOfTriangle :: Triangle -> ℝ3

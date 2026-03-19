@@ -295,7 +295,8 @@ cylinder = moduleWithoutSuite "cylinder" $ \_ -> do
 polyhedron :: (Symbol, SourcePosition -> ArgParser (StateC [OVal]))
 polyhedron = moduleWithoutSuite "polyhedron" $ \sourcePos -> do
     example "polyhedron(points=[[0,0,0], [2,0,0], [2,2,0], [0,2,0], [1, 1, 2]], faces=[[0,1,2,3], [0,4,1], [1,4,2], [2,4,3], [3,4,0]]);"
-    -- arguments
+    -- Arguments
+    -- FIXME: find a way to mark an arguement as non-empty!
     points :: [ℝ3] <- argument "points" `doc` "list of points to construct faces from"
     faces :: [[ℕ]] <- argument "faces" `doc` "list of sets of indices into points, used to create faces on the polyhedron."
     pure $ do
