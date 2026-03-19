@@ -99,6 +99,9 @@ collectTests :: ArgParser a -> [(Text, Maybe ℝ, [TestInvariant])]
 collectTests (APTest str maybeRes tests child) = (str, maybeRes, tests) : collectTests child
 collectTests (APExample _ child)               = collectTests child
 collectTests (APBranch branches)               = concatMap collectTests branches
+-- For AP, we use a default value to run the argParser, since we need one.
+collectTests (AP _ (Just defaultValue) _ fun)  = collectTests $ fun defaultValue
+collectTests (AP _ (Nothing) _ _)              = []
 collectTests _                                 = []
 
 -- | Apply arguments to an ArgParser
