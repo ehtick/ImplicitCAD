@@ -53,6 +53,8 @@ Common binstuff
                 -threaded
                 -rtsopts "-with-rtsopts -N -qg -t"
                 -optc-O3
+                -- Call the heap checker, even when memory is not being allocated. needed for control-c to work right when debugging.
+                -- -fno-omit-yields
                 -- see GHC manual 8.2.1 section 6.5.1.
                 -feager-blackholing
                 -Wall
@@ -73,6 +75,8 @@ Common libstuff
     Default-extensions: NoImplicitPrelude
     Ghc-options:
                 -optc-O3
+                -- Call the heap checker, even when memory is not being allocated. needed for control-c to work right when debugging.
+                -- -fno-omit-yields
                 -- see GHC manual 8.2.1 section 6.5.1.
                 -feager-blackholing
                 -Wall
@@ -145,6 +149,7 @@ Library
                     Graphics.Implicit.Export.Resolution
     Other-modules:
                   Graphics.Implicit.FastIntUtil
+                  Graphics.Implicit.TriUtil
                   Graphics.Implicit.IntegralUtil
                   Graphics.Implicit.ObjectUtil.GetBox2
                   Graphics.Implicit.ObjectUtil.GetBox3

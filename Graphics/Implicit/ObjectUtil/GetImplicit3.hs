@@ -1,17 +1,30 @@
--- Copyright 2014 2015 2016, Julia Longtin (julial@turinglace.com)
--- Copyright 2015 2016, Mike MacHenry (mike.machenry@gmail.com)
 -- Implicit CAD. Copyright (C) 2011, Christopher Olah (chris@colah.ca)
+-- Copyright 2015 2016, Mike MacHenry (mike.machenry@gmail.com)
+-- Copyright 2014 2015 2016, Julia Longtin (julia.longtin@gmail.com)
 -- Released under the GNU AGPLV3+, see LICENSE
 
 module Graphics.Implicit.ObjectUtil.GetImplicit3 (getImplicit3) where
 
-import Prelude (id, (||), (/=), either, round, fromInteger, Either(Left, Right), abs, (-), (/), (*), sqrt, (+), atan2, max, cos, minimum, ($), sin, pi, (.), Bool(True, False), ceiling, floor, pure, (==), otherwise, (**), min, Num, Applicative)
+-- Import only what we need from the prelude.
+import Prelude (abs, atan2, cos, ceiling, either, error, floor, fromInteger, id, max, min, minimum, negate, otherwise, pi, pure, round, sin, sqrt, (||), (/=), Either(Left, Right), (-), (/), (*), (+), ($), (.), Bool(True, False), (==), (**), Num, Applicative, (<$>))
+
+import Control.Lens ((^.))
+
+import Data.List (minimumBy)
+
+import Data.Ord (compare)
+
+import Linear (V2(V2), V3(V3), _xy, _z, distance)
+import qualified Linear (conjugate, inv44, normalizePoint, point, rotate, Metric)
+
+-- Matrix times column vector.
+import Linear.Matrix ((!*))
 
 import Graphics.Implicit.Definitions
     ( objectRounding,
       ObjectContext,
       ℕ,
-      SymbolicObj3(Cube, Sphere, Cylinder, Rotate3, Transform3, Extrude,
+      SymbolicObj3(Cube, Sphere, Cylinder, Polyhedron, Rotate3, Transform3, Extrude,
                    ExtrudeM, ExtrudeOnEdgeOf, RotateExtrude, Shared3, Torus, Ellipsoid, BoxFrame, Link),
       Obj3,
       ℝ2,
@@ -20,23 +33,20 @@ import Graphics.Implicit.Definitions
       toScaleFn,
       ℝ3 )
 
-import Graphics.Implicit.MathUtil ( rmax, rmaximum )
-
-import qualified Data.Either as Either (either)
-
--- Use getImplicit for handling extrusion of 2D shapes to 3D.
-import Graphics.Implicit.ObjectUtil.GetImplicitShared (getImplicitShared)
-import Linear (V2(V2), V3(V3), _xy, _z)
-import qualified Linear
-
+-- For handling extrusion of 2D shapes to 3D.
 import {-# SOURCE #-} Graphics.Implicit.Primitives (getImplicit)
-import Control.Lens ((^.))
+
+import Graphics.Implicit.TriUtil (distancePointToTriangle, findTriangle, pointOnOutsideByWinding)
+
+import Graphics.Implicit.MathUtil (rmax, rmaximum)
+
+import Graphics.Implicit.ObjectUtil.GetImplicitShared (getImplicitShared)
 
 default (ℝ)
 
 -- Length similar to the opengl version, needed for some of the shape definitions
 openglLength :: (Linear.Metric f, Num (f ℝ), Applicative f) => f ℝ -> ℝ
-openglLength v = Linear.distance (abs v) $ pure 0
+openglLength v = distance (abs v) $ pure 0
 
 -- Component wise maximum. This is what the opengl language is doing, so we need
 -- it for the function as defined by the blog above.
@@ -59,6 +69,22 @@ getImplicit3 _ (Cylinder h r1 r2) = \(V3 x y z) ->
         θ = atan2 (r2-r1) h
     in
         max (d * cos θ) (abs (z-h/2) - (h/2))
+-- FIXME: Make Polyhedron correct by construction.
+getImplicit3 _ (Polyhedron [] _) = error "Asked to find distance to an empty polyhedron. No points given."
+getImplicit3 _ (Polyhedron _ []) = error "Asked to find distance to an empty polyhedron. No faces given."
+getImplicit3 _ (Polyhedron points tris) = \(point) ->
+  let
+    ((_,res), _) = unsignedDistanceAndTriangleClosestTo point
+  in
+--    if pointOnOutside point (findTriangle points closestTri) closestTri feature
+    if pointOnOutsideByWinding point triangles
+    then          res
+    else negate $ res
+  where
+    unsignedDistanceAndTriangleClosestTo point = minimumBy (\((_,a),_) ((_,b),_) -> a `compare` b) $ featDistTriangles point
+    featDistTriangles point = (\triangle -> (distancePointToTriangle point triangle, triangle)) <$> triangles
+    -- Decompose our tris into triangles.
+    triangles = findTriangle points <$> tris
 getImplicit3 _ (BoxFrame b e) = \p' ->
     let p@(V3 px py pz) = abs p' - b
         V3 qx qy qz = abs (p + pure e) - pure e
@@ -77,7 +103,7 @@ getImplicit3 _ (Link le r1 r2) = \(V3 px py pz) ->
 getImplicit3 ctx (Rotate3 q symbObj) =
     getImplicit3 ctx symbObj . Linear.rotate (Linear.conjugate q)
 getImplicit3 ctx (Transform3 m symbObj) =
-    getImplicit3 ctx symbObj . Linear.normalizePoint . (Linear.inv44 m Linear.!*) . Linear.point
+    getImplicit3 ctx symbObj . Linear.normalizePoint . (Linear.inv44 m !*) . Linear.point
 -- 2D Based
 getImplicit3 ctx (Extrude h symbObj) =
     let
@@ -147,12 +173,12 @@ getImplicit3 ctx (RotateExtrude totalRotation translate rotate symbObj) =
             || either is360m (\f -> is360m (f 0 - f totalRotation)) rotate
         round' = objectRounding ctx
         translate' :: ℝ -> ℝ2
-        translate' = Either.either
+        translate' = either
                 (\(V2 a b) θ -> V2 (a*θ/totalRotation) (b*θ/totalRotation))
                 id
                 translate
         rotate' :: ℝ -> ℝ
-        rotate' = Either.either
+        rotate' = either
                 (\t θ -> t*θ/totalRotation )
                 id
                 rotate
@@ -173,9 +199,9 @@ getImplicit3 ctx (RotateExtrude totalRotation translate rotate symbObj) =
                         [0 .. floor $ (totalRotation - θ) / tau]
             n <- ns
             let
-                θvirt = fromℕtoℝ n * tau + θ
-                (V2 rshift zshift) = translate' θvirt
-                twist = rotate' θvirt
+                θvert = fromℕtoℝ n * tau + θ
+                (V2 rshift zshift) = translate' θvert
+                twist = rotate' θvert
                 rz_pos = if twists
                         then let
                             (c,s) = (cos twist, sin twist)
@@ -186,7 +212,8 @@ getImplicit3 ctx (RotateExtrude totalRotation translate rotate symbObj) =
             pure $
               if capped
               then rmax round'
-                    (abs (θvirt - (totalRotation / 2)) - (totalRotation / 2))
+                    (abs (θvert - (totalRotation / 2)) - (totalRotation / 2))
                     (obj rz_pos)
               else obj rz_pos
 getImplicit3 ctx (Shared3 obj) = getImplicitShared ctx obj
+

@@ -1,6 +1,7 @@
 # Version [next](https://github.com/Haskell-Things/ImplicitCAD/compare/v0.4.1.0...master) (202Y-MM-DD)
 
 * ExtOpenScad interface changes
+  * Added `polyhedron()` support [#497](https://github.com/Haskell-Things/ImplicitCAD/pull/497)
   * Added `projection(cut=true)` support [#448](https://github.com/Haskell-Things/ImplicitCAD/pull/448)
 
 * Haskell interface changes
