@@ -7,8 +7,11 @@ module Graphics.Implicit.Export.Render.GetSegs (getSegs) where
 import Prelude((-), Bool(True, False), sqrt, (+), (*), (/=), map, (.), filter, ($), (<=))
 
 import Graphics.Implicit.Definitions (ℝ, ℝ2, Obj2, Polyline(Polyline))
+
 import Graphics.Implicit.Export.Render.RefineSegs (refine)
-import Graphics.Implicit.Export.Util (centroid)
+
+import Graphics.Implicit.Export.Util (centroid2DPair)
+
 import Linear (V2(V2))
 
 {- The goal of getSegs is to create polylines to separate
@@ -57,7 +60,8 @@ getSegs :: ℝ2 -> ℝ2 -> Obj2 -> (ℝ,ℝ,ℝ,ℝ) -> (ℝ,ℝ,ℝ,ℝ) -> [Po
 getSegs p1@(V2 x y) p2 obj (x1y1, x2y1, x1y2, x2y2) (midx1V,midx2V,midy1V,midy2V) =
     let
         -- Let's evaluate obj at a few points...
-        c = obj (centroid [p1,p2])
+        -- NOTE: moved from centroid here as a speedup.
+        c = obj $ centroid2DPair p1 p2
 
         -- TODO(sandy): i might have swapped (^+^) for - here
         (V2 dx dy) = p2 - p1

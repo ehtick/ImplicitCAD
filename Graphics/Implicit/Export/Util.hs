@@ -7,12 +7,14 @@
 
 -- Functions to make meshes/polylines finer.
 
-module Graphics.Implicit.Export.Util (normTriangle, normVertex, centroid) where
+module Graphics.Implicit.Export.Util (normTriangle, normVertex, centroid, centroid2DPair, centroid3DPair) where
 
 import Prelude(Num, Applicative, Foldable, pure, (+), Fractional, (/), (-), realToFrac, length)
 
-import Graphics.Implicit.Definitions (ℝ, ℝ3, Obj3, Triangle(Triangle), NormedTriangle(NormedTriangle))
+import Graphics.Implicit.Definitions (ℝ, ℝ2, ℝ3, Obj3, Triangle(Triangle), NormedTriangle(NormedTriangle))
+
 import Linear ((*^), (^/), normalize, V3(V3))
+
 import Data.List (foldl')
 
 -- Change the default for bare numbers in this file.
@@ -51,3 +53,8 @@ centroid :: (Fractional a, Foldable t, Applicative f, Num (f a)) => t (f a) -> f
 centroid pts = foldl' (+) (pure 0) pts ^/ realToFrac (length pts)
 {-# INLINABLE centroid #-}
 
+centroid3DPair :: ℝ3 -> ℝ3 -> ℝ3
+centroid3DPair a b =(a+b)/2
+
+centroid2DPair :: ℝ2 -> ℝ2 -> ℝ2
+centroid2DPair a b =(a+b)/2

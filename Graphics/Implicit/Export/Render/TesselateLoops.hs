@@ -10,7 +10,7 @@ import Graphics.Implicit.Definitions (ℝ, ℕ, Obj3, ℝ3, TriangleMesh(Triangl
 
 import Graphics.Implicit.Export.Render.Definitions (TriSquare(Tris))
 
-import Graphics.Implicit.Export.Util (centroid)
+import Graphics.Implicit.Export.Util (centroid3DPair, centroid)
 
 import Data.List (genericLength)
 import Linear ( cross, Metric(norm), (^*), (^/) )
@@ -68,7 +68,7 @@ tesselateLoop _ _ [[a,_],[b,_],[c,_],[d,_]] | centroid [a,c] == centroid [b,d] =
 -}
 -- | Create a pair of triangles from a quad.
 -- FIXME: magic number
-tesselateLoop res obj [[a,_],[b,_],[c,_],[d,_]] | obj (centroid [a,c]) < res/30 =
+tesselateLoop res obj [[a,_],[b,_],[c,_],[d,_]] | obj (centroid3DPair a c) < res/30 =
     pure $ Tris $ TriangleMesh [Triangle (a,b,c), Triangle (a,c,d)]
 
 -- Fallback case: make fans
@@ -112,7 +112,7 @@ shrinkLoop _ path@[a,b,c] res obj =
 
 -- FIXME: magic number.
 shrinkLoop n path@(a:b:c:xs) res obj | n < genericLength path =
-    if abs (obj (centroid [a,c])) < res/50
+    if abs (obj $ centroid3DPair a c) < res/50
     then
         let (tris,remainder) = shrinkLoop 0 (a:c:xs) res obj
         in (Triangle (a,b,c):tris, remainder)

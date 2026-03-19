@@ -8,7 +8,9 @@ module Graphics.Implicit.Export.Render.RefineSegs (refine) where
 import Prelude((<), (/), (<>), (*), ($), (&&), (-), (+), (.), (>), abs, (<=))
 
 import Graphics.Implicit.Definitions (ℝ, ℝ2, Polyline(Polyline), minℝ, Fastℕ, Obj2)
-import Graphics.Implicit.Export.Util (centroid)
+
+import Graphics.Implicit.Export.Util (centroid2DPair)
+
 import Linear ( Metric(norm, dot), V2(V2), normalize, (^*) )
 
 default (Fastℕ, ℝ)
@@ -32,7 +34,7 @@ detail' _ _ a = a
 detail :: Fastℕ -> ℝ -> (ℝ2 -> ℝ) -> Polyline -> Polyline
 detail n res obj (Polyline [p1, p2]) | n < 2 =
     let
-        mid = centroid [p1,p2]
+        mid = centroid2DPair p1 p2
         midval = obj mid
     in if abs midval < res / 40
        then Polyline [p1, p2]
