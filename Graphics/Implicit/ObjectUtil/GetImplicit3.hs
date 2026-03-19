@@ -10,8 +10,6 @@ import Prelude (abs, atan2, cos, ceiling, either, error, floor, fromInteger, id,
 
 import Control.Lens ((^.))
 
-import qualified Data.Either as Either (either)
-
 import Data.List (minimumBy)
 
 import Data.Ord (compare)
@@ -175,12 +173,12 @@ getImplicit3 ctx (RotateExtrude totalRotation translate rotate symbObj) =
             || either is360m (\f -> is360m (f 0 - f totalRotation)) rotate
         round' = objectRounding ctx
         translate' :: ℝ -> ℝ2
-        translate' = Either.either
+        translate' = either
                 (\(V2 a b) θ -> V2 (a*θ/totalRotation) (b*θ/totalRotation))
                 id
                 translate
         rotate' :: ℝ -> ℝ
-        rotate' = Either.either
+        rotate' = either
                 (\t θ -> t*θ/totalRotation )
                 id
                 rotate
