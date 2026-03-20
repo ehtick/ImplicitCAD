@@ -382,7 +382,7 @@ primitiveModulesSpec = mapM_ runTest inlineTests
       where
         dummyPos :: SourcePosition
         dummyPos = SourcePosition 0 0 "/dev/null"
-        testsOfModule (_, ONModule _ implementation _) = collectTests $ implementation dummyPos []
+        testsOfModule (_, ONModule _ implementation _) = collectTests $ implementation dummyPos
         testsOfModule _ = []
 
 -- FIXME: This should not be in IO () for reasons of ImplicitCAD.
